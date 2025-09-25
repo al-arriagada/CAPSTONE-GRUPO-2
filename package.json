@@ -1,0 +1,9 @@
+{
+  "dependencies": {
+    "dayjs": "^1.11.18",
+    "jspdf": "^3.0.3",
+    "qrcode": "^1.5.4",
+    "react-router-dom": "^7.9.2",
+    "recharts": "^3.2.1"
+  }
+}
