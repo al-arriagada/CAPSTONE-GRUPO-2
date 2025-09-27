@@ -6,32 +6,35 @@ const AuthContext = createContext()
 
 export const AuthProvider = ({ children }) => {
   const [user, setUser] = useState(null)
+  const [loading, setLoading] = useState(true) // Añadimos loading para esperar la sesión
 
   useEffect(() => {
-    // ✅ Solución: Obtener el resultado completo primero
-    const getSession = async () => {
-      const { data, error } = await supabase.auth.getSession()
+    const checkSession = async () => {
+      const { data: { session }, error } = await supabase.auth.getSession()
       if (error) {
-        console.error('Error al obtener sesión:', error)
+        console.error('Error al obtener sesión inicial:', error)
         setUser(null)
       } else {
-        setUser(data.session?.user ?? null)
+        setUser(session?.user ?? null)
       }
+      setLoading(false)
     }
 
-    getSession() // Llama a la función
+    checkSession()
 
-    // ✅ Suscribirse a cambios de autenticación
+    // Suscribirse a cambios de autenticación
     const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
       setUser(session?.user ?? null)
     })
 
-    return () => subscription.unsubscribe()
+    return () => {
+      subscription.unsubscribe()
+    }
   }, [])
 
   return (
-    <AuthContext.Provider value={{ user, setUser }}>
-      {children}
+    <AuthContext.Provider value={{ user, setUser, loading }}>
+      {!loading ? children : <div className="min-h-screen flex items-center justify-center">Cargando...</div>}
     </AuthContext.Provider>
   )
 }
