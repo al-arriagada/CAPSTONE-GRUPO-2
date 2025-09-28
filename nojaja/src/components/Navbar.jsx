@@ -1,37 +1,171 @@
 // src/components/Navbar.jsx
-import { Link } from 'react-router-dom'
-import { useAuth } from '../context/AuthContext'
+import React, { useState } from "react";
+import { Link, NavLink, useNavigate } from "react-router-dom";
+import { useAuth } from "../context/AuthContext.jsx";
 
 export default function Navbar() {
-  console.log('Navbar se está renderizando') // ← Añade esta línea
-  const { user } = useAuth()
+  const [open, setOpen] = useState(false);
+  const navigate = useNavigate();
+  const { user, signOut, loading } = useAuth(); 
+  // asumo que tu AuthContext expone { user, signOut, loading }
+
+  const handleLogout = async () => {
+    try {
+      await signOut();
+      navigate("/signin"); // o a "/" si prefieres
+    } catch (err) {
+      console.error(err);
+    }
+  };
 
   return (
-    <nav
-      style={{
-        background: 'red',
-        color: 'white',
-        padding: '1rem',
-        position: 'fixed',
-        top: 0,
-        left: 0,
-        width: '100%',
-        zIndex: 9999, // Aumentamos el z-index
-        boxShadow: '0 2px 4px rgba(0,0,0,0.1)', // Agregamos sombra para que se vea mejor
-      }}
-    >
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-        <div>
-          <Link to="/" style={{ color: 'white', textDecoration: 'none' }}>Noaja</Link>
+    <nav className="sticky top-0 z-50 border-b bg-white/80 backdrop-blur">
+      <div className="mx-auto flex h-14 max-w-7xl items-center justify-between px-4 sm:px-6 lg:px-8">
+        {/* Left: logo */}
+        <div className="flex items-center gap-2">
+          <Link to="/" className="flex items-center gap-2">
+            <span className="text-xl">🐾</span>
+            <span className="font-semibold">PetCare Pro</span>
+          </Link>
         </div>
-        <div>
-          {user ? (
-            <span>Hola, {user.email}</span>
+
+        {/* Center: links (ocultos en mobile) */}
+        <div className="hidden items-center gap-4 md:flex">
+          {/* agrega más si quieres */}
+        </div>
+
+        {/* Right: auth actions */}
+        <div className="hidden items-center gap-2 md:flex">
+          {/* Mientras carga el contexto, evita parpadeo */}
+          {loading ? (
+            <div className="h-8 w-24 animate-pulse rounded-md bg-gray-200" />
+          ) : user ? (
+            <UserMenu user={user} onLogout={handleLogout} />
           ) : (
-            <Link to="/signin" style={{ color: 'white', textDecoration: 'none' }}>Iniciar sesión</Link>
+            <>
+              <Link
+                to="/signin"
+                className="rounded-xl border px-3 py-1.5 text-sm hover:bg-gray-50"
+              >
+                Iniciar sesión
+              </Link>
+              <Link
+                to="/signup"
+                className="rounded-xl bg-black px-3 py-1.5 text-sm text-white hover:opacity-90"
+              >
+                Registrarse
+              </Link>
+            </>
           )}
         </div>
+
+        {/* Mobile toggle */}
+        <button
+          className="inline-flex items-center rounded-xl border px-2 py-1 md:hidden"
+          onClick={() => setOpen((v) => !v)}
+          aria-label="Abrir menú"
+        >
+          ☰
+        </button>
       </div>
+
+      {/* Mobile menu */}
+      {open && (
+        <div className="border-t bg-white md:hidden">
+          <div className="mx-auto flex max-w-7xl flex-col gap-2 px-4 py-3">
+            <NavItem to="/" end onClick={() => setOpen(false)}>Inicio</NavItem>
+            <NavItem to="/dashboard" onClick={() => setOpen(false)}>Dashboard</NavItem>
+
+            <div className="h-px bg-gray-200 my-2" />
+
+            {loading ? (
+              <div className="h-8 w-24 animate-pulse rounded-md bg-gray-200" />
+            ) : user ? (
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-3">
+                  <Avatar fallback={user?.email} />
+                  <div className="text-sm">
+                    <div className="font-medium leading-tight">
+                      {user?.user_metadata?.name || user?.email}
+                    </div>
+                    <div className="text-gray-500">Sesión activa</div>
+                  </div>
+                </div>
+                <button
+                  onClick={() => { setOpen(false); handleLogout(); }}
+                  className="rounded-xl border px-3 py-1.5 text-sm hover:bg-gray-50"
+                >
+                  Cerrar sesión
+                </button>
+              </div>
+            ) : (
+              <div className="flex gap-2">
+                <Link
+                  to="/signin"
+                  onClick={() => setOpen(false)}
+                  className="flex-1 rounded-xl border px-3 py-1.5 text-center text-sm hover:bg-gray-50"
+                >
+                  Iniciar sesión
+                </Link>
+                <Link
+                  to="/signup"
+                  onClick={() => setOpen(false)}
+                  className="flex-1 rounded-xl bg-black px-3 py-1.5 text-center text-sm text-white hover:opacity-90"
+                >
+                  Registrarse
+                </Link>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
     </nav>
-  )
+  );
+}
+
+/* ---------- subcomponentes ---------- */
+
+function NavItem({ to, end, children, onClick }) {
+  return (
+    <NavLink
+      to={to}
+      end={end}
+      onClick={onClick}
+      className={({ isActive }) =>
+        [
+          "rounded-xl px-3 py-1.5 text-sm",
+          isActive ? "bg-black text-white" : "hover:bg-gray-50",
+        ].join(" ")
+      }
+    >
+      {children}
+    </NavLink>
+  );
+}
+
+function UserMenu({ user, onLogout }) {
+  return (
+    <div className="flex items-center gap-3">
+      <Avatar fallback={user?.email} />
+      <span className="hidden text-sm text-gray-700 sm:inline">
+        Bienvenido,{" "}
+        <strong>{user?.user_metadata?.name || user?.email?.split("@")[0]}</strong>
+      </span>
+      <button
+        onClick={onLogout}
+        className="rounded-xl border px-3 py-1.5 text-sm hover:bg-gray-50"
+      >
+        Cerrar sesión
+      </button>
+    </div>
+  );
+}
+
+function Avatar({ fallback }) {
+  const letter = (fallback || "?").toString().charAt(0).toUpperCase();
+  return (
+    <div className="flex h-8 w-8 items-center justify-center rounded-full bg-gray-900 text-sm font-semibold text-white">
+      {letter}
+    </div>
+  );
 }
