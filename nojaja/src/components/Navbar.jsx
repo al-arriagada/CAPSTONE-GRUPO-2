@@ -31,6 +31,8 @@ export default function Navbar() {
 
         {/* Center: links (ocultos en mobile) */}
         <div className="hidden items-center gap-4 md:flex">
+            
+            {user && <NavItem to="/app">Dashboard</NavItem>}   {/* ⬅️ solo con sesión */}
           {/* agrega más si quieres */}
         </div>
 
