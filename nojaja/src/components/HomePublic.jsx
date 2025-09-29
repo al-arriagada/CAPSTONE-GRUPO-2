@@ -1,4 +1,6 @@
+import Carousel from "./Carousel";
 import preview from "../assets/perritohd.png";
+import prev2 from "../assets/gatohd.png"
 
 export default function HomePublic() {
   return (
@@ -9,7 +11,7 @@ export default function HomePublic() {
             Gestiona la salud y cuidados de tus mascotas en un solo lugar
           </h1>
           <p className="mt-3 text-gray-600">
-            Registra vacunas, agenda citas y lleva el historial médico con facilidad.
+            Registra vacunas, citas y lleva el historial médico con facilidad.
           </p>
           <div className="mt-6 flex gap-3">
             <a href="/signup" className="rounded-xl bg-black px-4 py-2 text-white text-sm hover:opacity-90">
@@ -25,15 +27,22 @@ export default function HomePublic() {
         </div>
         <div className="rounded-2xl border bg-white p-4 shadow-sm">
           {/* Pon aquí una captura/preview del dashboard o ilustración */}
-          <img src={preview} alt="" />
-          
+            <Carousel
+              images={
+              [preview,prev2]}
+              fit="cover"
+              position="center"
+              interval={5000}
+              alt="preview"
+              
+            />
         </div>
       </div>
       {/* beneficios */}
       <div className="mt-12 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
         <Feature title="Recordatorios automáticos" desc="Vacunas, desparasitación y controles." />
         <Feature title="Historial médico" desc="Todo centralizado, fácil de compartir." />
-        <Feature title="Citas y análisis" desc="Agenda, métricas y reportes." />
+        <Feature title="Citas y análisis" desc="Métricas y reportes." />
       </div>
     </section>
   );
