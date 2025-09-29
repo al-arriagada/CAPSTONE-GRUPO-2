@@ -1,3 +1,5 @@
+import preview from "../assets/perritohd.png";
+
 export default function HomePublic() {
   return (
     <section className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 py-10">
@@ -23,7 +25,8 @@ export default function HomePublic() {
         </div>
         <div className="rounded-2xl border bg-white p-4 shadow-sm">
           {/* Pon aquí una captura/preview del dashboard o ilustración */}
-          <div className="aspect-[16/10] w-full rounded-xl bg-gray-100" />
+          <img src={preview} alt="" />
+          
         </div>
       </div>
       {/* beneficios */}
