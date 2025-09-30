@@ -76,6 +76,15 @@ export default function Signin() {
             </div>
           </div>
 
+          <div className="text-sm text-right mb-4">
+            <a
+              href="/reset-password"
+              className="font-medium text-indigo-600 hover:text-indigo-500"
+            >
+              Olvidé mi contraseña
+            </a>
+          </div>
+
           <div>
             <button
               type="submit"
