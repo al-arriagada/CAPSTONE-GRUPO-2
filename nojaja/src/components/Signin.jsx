@@ -90,17 +90,32 @@ export default function Signin() {
             </div>
           </div>
 
-          <button
-            type="submit"
-            disabled={loading}
-            className={`w-full py-3 rounded-xl text-white font-semibold shadow-md transition transform hover:scale-[1.02] ${
-              loading
-                ? "bg-indigo-400 cursor-not-allowed"
-                : "bg-indigo-600 hover:bg-indigo-700"
-            }`}
-          >
-            {loading ? "Iniciando sesión..." : "Iniciar sesión"}
-          </button>
+          <div className="text-sm text-right mb-4">
+            <a
+              href="/reset-password"
+              className="font-medium text-indigo-600 hover:text-indigo-500"
+            >
+              Olvidé mi contraseña
+            </a>
+          </div>
+
+          <div>
+            <button
+              type="submit"
+              disabled={loading}
+              className={`group relative w-full flex justify-center py-2 px-4 border border-transparent text-sm font-medium rounded-md text-white ${
+                loading ? 'bg-indigo-400' : 'bg-indigo-600 hover:bg-indigo-700'
+              } focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500`}
+            >
+              {loading ? 'Iniciando sesión...' : 'Iniciar sesión'}
+            </button>
+          </div>
+
+          <div className="text-center">
+            <a href="/signup" className="font-medium text-indigo-600 hover:text-indigo-500">
+              ¿No tienes cuenta? Regístrate
+            </a>
+          </div>
         </form>
 
         <p className="mt-6 text-center text-gray-600 text-sm">

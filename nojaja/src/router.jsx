@@ -6,6 +6,8 @@ import HomePrivate from "./components/Home.jsx";          // tu dashboard
 import Signin from "./components/Signin.jsx";
 import Signup from "./components/Signup.jsx";
 import ProtectedRoute from "./components/ProtectedRoute.jsx";
+import ResetPassword from "./components/ResetPassword.jsx";
+import UpdatePassword from "./components/UpdatePassword.jsx";
 
 const router = createBrowserRouter([
   // Rutas públicas
@@ -32,6 +34,14 @@ const router = createBrowserRouter([
       },
       // más rutas privadas: citas, historial, etc.
     ],
+  },
+  {
+    path: "/reset-password",
+    element: <ResetPassword />,
+  },
+  {
+    path: "/update-password",
+    element: <UpdatePassword />,
   },
 ]);
 
