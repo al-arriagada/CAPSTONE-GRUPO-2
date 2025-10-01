@@ -8,6 +8,7 @@ import Signup from "./components/Signup.jsx";
 import ProtectedRoute from "./components/ProtectedRoute.jsx";
 import ResetPassword from "./components/ResetPassword.jsx";
 import UpdatePassword from "./components/UpdatePassword.jsx";
+import RedirectIfAuth from "./components/RedirectIfAuth.jsx";
 
 const router = createBrowserRouter([
   // Rutas públicas
@@ -16,8 +17,16 @@ const router = createBrowserRouter([
     element: <PublicLayout />,   // Navbar puede ser el mismo; funciona sin user
     children: [{ index: true, element: <HomePublic /> }],
   },
-  { path: "/signin", element: <Signin /> },
-  { path: "/signup", element: <Signup /> },
+  { path: "/signin", element:( 
+      <RedirectIfAuth>
+        <Signin />
+      </RedirectIfAuth>   
+      )},
+  { path: "/signup", element: (
+      <RedirectIfAuth>
+        <Signup />
+      </RedirectIfAuth>
+      ) },
 
   // Rutas privadas
   {

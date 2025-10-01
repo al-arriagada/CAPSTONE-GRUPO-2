@@ -12,7 +12,7 @@ export default function Navbar() {
   const handleLogout = async () => {
     try {
       await signOut();
-      navigate("/signin"); // o a "/" si prefieres
+      navigate("/"); // o a "/" si prefieres
     } catch (err) {
       console.error(err);
     }

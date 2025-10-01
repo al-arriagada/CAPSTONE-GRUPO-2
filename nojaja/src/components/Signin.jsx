@@ -27,7 +27,7 @@ export default function Signin() {
     } else {
       setSuccess("¡Inicio de sesión exitoso!");
       setTimeout(() => {
-        navigate("/");
+        navigate("/app");
       }, 1500);
     }
 
