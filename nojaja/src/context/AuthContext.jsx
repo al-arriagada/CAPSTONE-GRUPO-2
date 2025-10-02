@@ -1,51 +1,69 @@
 // src/context/AuthContext.jsx
 import React, { createContext, useContext, useState, useEffect } from "react";
 import { supabase } from "../supabaseClient";
+import { ensureProfile } from "../services/profile";
 
 const AuthContext = createContext(null);
 
 export const AuthProvider = ({ children }) => {
   const [user, setUser] = useState(null);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(true);   // SOLO detección de sesión inicial
 
   useEffect(() => {
     let ignore = false;
 
     const init = async () => {
       const { data: { session }, error } = await supabase.auth.getSession();
+
       if (error) {
-        console.error("Error al obtener sesión inicial:", error);
-        if (!ignore) setUser(null);
-      } else {
-        if (!ignore) setUser(session?.user ?? null);
+        console.error("getSession:", error);
+        if (!ignore) { setUser(null); setLoading(false); }
+        return;
       }
-      if (!ignore) setLoading(false);
+
+      const u = session?.user ?? null;
+      if (!ignore) {
+        setUser(u);
+        setLoading(false);               // ⬅️ libera la UI inmediatamente
+      }
+
+      // corre ensureProfile SIN bloquear la UI
+      if (u) {
+        ensureProfile({
+          id: u.id,
+          full_name: u.user_metadata?.name || u.email,
+        }).catch((e) => console.error("ensureProfile(init):", e));
+      }
     };
 
     init();
 
-    // Suscribirse a cambios de autenticación (Supabase v2)
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
-      setUser(session?.user ?? null);
-    });
+    // Auth state changes
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(
+      async (event, session) => {
+        const u = session?.user ?? null;
+        setUser(u);
 
-    return () => {
-      ignore = true;
-      subscription?.unsubscribe?.();
-    };
+        if (u && (event === "SIGNED_IN" || event === "USER_UPDATED")) {
+          ensureProfile({
+            id: u.id,
+            full_name: u.user_metadata?.name || u.email,
+          }).catch((e) => console.error("ensureProfile(onAuth):", e));
+        }
+      }
+    );
+
+    return () => { ignore = true; subscription?.unsubscribe?.(); };
   }, []);
 
-  // ⬇️ NUEVO: cerrar sesión
   const signOut = async () => {
     const { error } = await supabase.auth.signOut();
     if (error) throw error;
     setUser(null);
   };
 
-  const value = { user, loading, setUser, signOut }; // ⬅️ expón signOut
-
   return (
-    <AuthContext.Provider value={value}>
+    <AuthContext.Provider value={{ user, loading, setUser, signOut }}>
       {!loading ? children : (
         <div className="min-h-screen flex items-center justify-center">Cargando...</div>
       )}

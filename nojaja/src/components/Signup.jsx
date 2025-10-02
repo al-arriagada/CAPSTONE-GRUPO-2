@@ -71,7 +71,7 @@ export default function Signup() {
                 htmlFor="username"
                 className="block text-sm font-semibold text-gray-700"
               >
-                Nombre de usuario
+                Nombre
               </label>
               <input
                 id="username"
