@@ -166,8 +166,11 @@ function UserMenu({ user, onLogout }) {
 function Avatar({ fallback }) {
   const letter = (fallback || "?").toString().charAt(0).toUpperCase();
   return (
-    <div className="flex h-8 w-8 items-center justify-center rounded-full bg-gray-900 text-sm font-semibold text-white">
+    <Link
+      to="/app/profile"
+      className="flex h-8 w-8 items-center justify-center rounded-full bg-gray-900 text-sm font-semibold text-white hover:scale-105 transition"
+    >
       {letter}
-    </div>
+    </Link>
   );
 }
