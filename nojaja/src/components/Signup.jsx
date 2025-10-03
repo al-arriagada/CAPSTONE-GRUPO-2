@@ -136,15 +136,24 @@ export default function Signup() {
     }
 
     try {
+      // Normaliza fecha a YYYY-MM-DD
+      const birthISO = fechaNacimiento ? new Date(fechaNacimiento).toISOString().slice(0, 10) : null;
+
       const { data, error: authError } = await supabase.auth.signUp({
         email,
         password,
         options: {
-          data: { username, rut, fecha_nacimiento: fechaNacimiento }
-        }
+          // 👇 usa "full_name" (no "username") para que luego ensureProfile lo tome
+          data: {
+            full_name: username,
+            rut,                  // si deseas guardarlo en auth (opcional)
+            birth_date: birthISO, // opcional: útil para trigger/analítica
+          },
+          
+        },
       });
 
-      console.log("signup result:", { data, authError });
+    console.log("signup result:", { data, authError });
 
       // Manejo de errores explícitos
       if (authError) {

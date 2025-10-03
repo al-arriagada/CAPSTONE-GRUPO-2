@@ -3,7 +3,8 @@ import { useAuth } from "../context/AuthContext.jsx";
 import { useNavigate } from "react-router-dom";
 import { supabase } from "../supabaseClient";
 import { createPet, uploadPetPhoto } from "../services/pets";
-import { ensureProfile } from "../services/profile"; // ya lo tienes
+import { upsertAppUserFromAuthUser } from "../services/profile";
+
 
 export default function PetForm() {
   const { user } = useAuth();
@@ -59,7 +60,7 @@ export default function PetForm() {
 
     try {
       // Garantiza perfil (por RLS de pet)
-      await ensureProfile({ id: user.id, full_name: user.user_metadata?.name || user.email });
+      await upsertAppUserFromAuthUser(user);
 
       // Sube foto si hay
       let image_url = null;

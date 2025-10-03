@@ -1,24 +1,26 @@
 // src/services/profile.js
 import { supabase } from "../supabaseClient";
 
-// Asegura que exista una fila en petcare.app_user para el auth.uid() actual
-export async function ensureProfile({ id, email }) {
-  // lee si existe
-  const { data: row, error: readErr } = await supabase
-    .schema("petcare")
-    .from("app_user")
-    .select("user_id")
-    .eq("user_id", id)
-    .maybeSingle();
+export async function upsertAppUserFromAuthUser(u) {
+  // toma todo de auth: id/email + metadatos que mandes en el signup
+const raw = (u.user_metadata && u.user_metadata.birth_date) || null;
+const birth_date =
+  raw && /^\d{4}-\d{2}-\d{2}$/.test(raw) ? raw : null;
 
-  if (readErr) throw readErr;
-  if (row) return row;
+const payload = {
+  user_id: u.id,
+  email: u.email,
+  full_name: u.user_metadata?.full_name || u.user_metadata?.name || u.email,
+  birth_date,           // 👈 ya validado
+  rut: u.user_metadata?.rut || null,
+  updated_at: new Date().toISOString(),
+};
 
-  // crea si no existe
+  // si no enviaste algunos campos, igual guarda lo que haya
   const { data, error } = await supabase
     .schema("petcare")
     .from("app_user")
-    .insert([{ user_id: id, email }])
+    .upsert([payload], { onConflict: "user_id" })
     .select("user_id")
     .single();
 

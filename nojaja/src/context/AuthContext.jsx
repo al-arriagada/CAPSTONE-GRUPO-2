@@ -1,20 +1,19 @@
 // src/context/AuthContext.jsx
-import React, { createContext, useContext, useState, useEffect } from "react";
+import React, { createContext, useContext, useEffect, useState } from "react";
 import { supabase } from "../supabaseClient";
-import { ensureProfile } from "../services/profile";
+import { upsertAppUserFromAuthUser } from "../services/profile";
 
 const AuthContext = createContext(null);
 
 export const AuthProvider = ({ children }) => {
-  const [user, setUser] = useState(null);
-  const [loading, setLoading] = useState(true);   // SOLO detección de sesión inicial
+  const [user, setUser]   = useState(null);
+  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     let ignore = false;
 
     const init = async () => {
       const { data: { session }, error } = await supabase.auth.getSession();
-
       if (error) {
         console.error("getSession:", error);
         if (!ignore) { setUser(null); setLoading(false); }
@@ -22,38 +21,26 @@ export const AuthProvider = ({ children }) => {
       }
 
       const u = session?.user ?? null;
-      if (!ignore) {
-        setUser(u);
-        setLoading(false);               // ⬅️ libera la UI inmediatamente
-      }
+      if (!ignore) { setUser(u); setLoading(false); }
 
-      // corre ensureProfile SIN bloquear la UI
-      if (u) {
-        ensureProfile({
-          id: u.id,
-          email: u.user_metadata?.name || u.email,
-        }).catch((e) => console.error("ensureProfile(init):", e));
-      }
+      // Si ya había sesión (p.ej. recarga), copia a app_user
+      if (u) upsertAppUserFromAuthUser(u).catch(console.error);
     };
 
     init();
 
-    // Auth state changes
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(
-      async (event, session) => {
+    const { data: { subscription } } =
+      supabase.auth.onAuthStateChange(async (event, session) => {
         const u = session?.user ?? null;
         setUser(u);
 
         if (u && (event === "SIGNED_IN" || event === "USER_UPDATED")) {
-          ensureProfile({
-            id: u.id,
-            email: u.user_metadata?.name || u.email,
-          }).catch((e) => console.error("ensureProfile(onAuth):", e));
+          // Primer login después de confirmar: copiamos a app_user aquí
+          upsertAppUserFromAuthUser(u).catch(console.error);
         }
-      }
-    );
+      });
 
-    return () => { ignore = true; subscription?.unsubscribe?.(); };
+    return () => subscription?.unsubscribe?.();
   }, []);
 
   const signOut = async () => {
@@ -63,7 +50,7 @@ export const AuthProvider = ({ children }) => {
   };
 
   return (
-    <AuthContext.Provider value={{ user, loading, setUser, signOut }}>
+    <AuthContext.Provider value={{ user, loading, signOut }}>
       {!loading ? children : (
         <div className="min-h-screen flex items-center justify-center">Cargando...</div>
       )}
