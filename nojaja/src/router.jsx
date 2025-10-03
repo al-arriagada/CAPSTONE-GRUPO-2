@@ -2,7 +2,7 @@ import { createBrowserRouter } from "react-router-dom";
 import AppLayout from "./components/AppLayout.jsx";      // Navbar + contenido privado
 import PublicLayout from "./components/PublicLayout.jsx"; // Navbar
 import HomePublic from "./components/HomePublic.jsx";
-import HomePrivate from "./components/Home.jsx";          // tu dashboard
+import HomePrivate from "./components/Home.jsx";
 import Signin from "./components/Signin.jsx";
 import Signup from "./components/Signup.jsx";
 import ProtectedRoute from "./components/ProtectedRoute.jsx";
@@ -10,52 +10,66 @@ import ResetPassword from "./components/ResetPassword.jsx";
 import UpdatePassword from "./components/UpdatePassword.jsx";
 import RedirectIfAuth from "./components/RedirectIfAuth.jsx";
 import PetForm from "./components/PetForm.jsx";
+import OwnerProfile from "./components/OwnerProfile.jsx"; // ✅ correcto
 
 const router = createBrowserRouter([
   // Rutas públicas
   {
     path: "/",
-    element: <PublicLayout />,   // Navbar puede ser el mismo; funciona sin user
+    element: <PublicLayout />,
     children: [{ index: true, element: <HomePublic /> }],
   },
-  { path: "/signin", element:( 
+  {
+    path: "/signin",
+    element: (
       <RedirectIfAuth>
         <Signin />
-      </RedirectIfAuth>   
-      )},
-  { path: "/signup", element: (
+      </RedirectIfAuth>
+    ),
+  },
+  {
+    path: "/signup",
+    element: (
       <RedirectIfAuth>
         <Signup />
       </RedirectIfAuth>
-      ) },
+    ),
+  },
 
   // Rutas privadas
   {
     path: "/app",
-    element: <AppLayout />,      // Navbar + <Outlet/> (privado)
+    element: <AppLayout />,
     children: [
       {
         index: true,
         element: (
           <ProtectedRoute>
-            <HomePrivate />      {/* tu dashboard actual */}
+            <HomePrivate /> {/* dashboard */}
           </ProtectedRoute>
         ),
       },
       {
+        path: "profile", // 👈 ahora existe /app/profile
+        element: (
+          <ProtectedRoute>
+            <OwnerProfile />
+          </ProtectedRoute>
+        ),
+      },
+<<<<<<< HEAD
+      {
         path: "pets/new", element: <ProtectedRoute><PetForm /></ProtectedRoute>
       },
       // más rutas privadas: citas, historial, etc.
+=======
+>>>>>>> 095ceaf4304e55188d6469a011098eeb38200b7f
     ],
   },
-  {
-    path: "/reset-password",
-    element: <ResetPassword />,
-  },
-  {
-    path: "/update-password",
-    element: <UpdatePassword />,
-  },
+
+  // Reset / Update Password
+  { path: "/reset-password", element: <ResetPassword /> },
+  { path: "/update-password", element: <UpdatePassword /> },
 ]);
 
 export default router;
