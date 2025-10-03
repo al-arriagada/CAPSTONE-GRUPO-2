@@ -2,7 +2,7 @@
 import { supabase } from "../supabaseClient";
 
 // Asegura que exista una fila en petcare.app_user para el auth.uid() actual
-export async function ensureProfile({ id, full_name }) {
+export async function ensureProfile({ id, email }) {
   // lee si existe
   const { data: row, error: readErr } = await supabase
     .schema("petcare")
@@ -18,7 +18,7 @@ export async function ensureProfile({ id, full_name }) {
   const { data, error } = await supabase
     .schema("petcare")
     .from("app_user")
-    .insert([{ user_id: id, full_name }])
+    .insert([{ user_id: id, email }])
     .select("user_id")
     .single();
 

@@ -31,7 +31,7 @@ export const AuthProvider = ({ children }) => {
       if (u) {
         ensureProfile({
           id: u.id,
-          full_name: u.user_metadata?.name || u.email,
+          email: u.user_metadata?.name || u.email,
         }).catch((e) => console.error("ensureProfile(init):", e));
       }
     };
@@ -47,7 +47,7 @@ export const AuthProvider = ({ children }) => {
         if (u && (event === "SIGNED_IN" || event === "USER_UPDATED")) {
           ensureProfile({
             id: u.id,
-            full_name: u.user_metadata?.name || u.email,
+            email: u.user_metadata?.name || u.email,
           }).catch((e) => console.error("ensureProfile(onAuth):", e));
         }
       }
