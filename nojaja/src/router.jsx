@@ -57,13 +57,10 @@ const router = createBrowserRouter([
           </ProtectedRoute>
         ),
       },
-<<<<<<< HEAD
       {
         path: "pets/new", element: <ProtectedRoute><PetForm /></ProtectedRoute>
       },
       // más rutas privadas: citas, historial, etc.
-=======
->>>>>>> 095ceaf4304e55188d6469a011098eeb38200b7f
     ],
   },
 
