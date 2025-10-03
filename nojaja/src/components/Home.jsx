@@ -1,52 +1,29 @@
 // src/components/Home.jsx
-import { useState } from "react";
-// Si usas un hook de usuario:
+import React, { useState } from "react";
+import { Link, useNavigate } from "react-router-dom";
 import { useAuth } from "../context/AuthContext.jsx";
+import useMyPets from "../hooks/useMyPets";          // ⬅️ hook que lista mascotas
+import PetCard from "../components/PetCard.jsx";     // ⬅️ tarjeta real
 
 export default function Home() {
-  const { user } = useAuth(); // opcional: para “Bienvenido, …”
+  const { user } = useAuth();
+  const { pets, loading, refreshing } = useMyPets();
   const [tab, setTab] = useState("mascotas");
+  const navigate = useNavigate();
 
-  // Mock de datos (conecta acá tu API / Supabase)
-  const ownerName = user?.user_metadata?.name || user?.email?.split("@")[0] || "usuario";
+  const ownerName =
+    user?.user_metadata?.name || user?.email?.split("@")[0] || "usuario";
+
+  // Stats básicas (cuando tengas citas/historial reales, reemplázalas)
   const stats = {
-    mascotas: 2,
-    citasSemana: 2,
-    historiales: 1,
+    mascotas: pets.length,
+    citasSemana: 0,
+    historiales: 0,
   };
-
-  const pets = [
-    {
-      id: "1",
-      name: "Max",
-      species: "Perro",
-      breed: "Golden Retriever",
-      age: "4 años",
-      weight: "30 kg",
-      lastCheck: "14/01/2024",
-      vaccines: 1,
-      records: 1,
-      image:
-        "https://images.unsplash.com/photo-1558944351-c87bafc4f9a6?q=80&w=1600&auto=format&fit=crop",
-    },
-    {
-      id: "2",
-      name: "Luna",
-      species: "Gato",
-      breed: "Siamés",
-      age: "3 años",
-      weight: "4 kg",
-      lastCheck: null,
-      vaccines: 0,
-      records: 0,
-      image:
-        "https://images.unsplash.com/photo-1592194996308-7b43878e84a6?q=80&w=1600&auto=format&fit=crop",
-    },
-  ];
 
   return (
     <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
-      {/* Top actions row (derecha) */}
+      {/* Top actions */}
       <div className="flex items-center justify-end gap-3 pt-6">
         <button
           className="inline-flex items-center gap-2 rounded-xl border px-3 py-2 text-sm hover:bg-gray-50"
@@ -56,7 +33,7 @@ export default function Home() {
         </button>
         <button
           className="inline-flex items-center gap-2 rounded-xl bg-black px-3 py-2 text-white text-sm hover:opacity-90"
-          onClick={() => alert("Registrar Mascota")}
+          onClick={() => navigate("/app/pets/new")}
         >
           <span className="i">＋</span> Registrar Mascota
         </button>
@@ -65,29 +42,16 @@ export default function Home() {
       {/* Header */}
       <header className="mt-4">
         <h1 className="text-3xl font-semibold tracking-tight">Dashboard de Dueño</h1>
-        <p className="mt-1 text-gray-500">Gestiona la información y cuidado de tus mascotas</p>
+        <p className="mt-1 text-gray-500">
+          Gestiona la información y cuidado de tus mascotas
+        </p>
       </header>
 
       {/* Stats */}
       <section className="mt-6 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
-        <StatCard
-          title="Mis Mascotas"
-          value={stats.mascotas}
-          helper="mascotas registradas"
-          icon="♡"
-        />
-        <StatCard
-          title="Citas Próximas"
-          value={stats.citasSemana}
-          helper="esta semana"
-          icon="🗓️"
-        />
-        <StatCard
-          title="Historiales"
-          value={stats.historiales}
-          helper="registros médicos"
-          icon="📄"
-        />
+        <StatCard title="Mis Mascotas" value={stats.mascotas} helper="registradas" icon="♡" />
+        <StatCard title="Citas Próximas" value={stats.citasSemana} helper="esta semana" icon="🗓️" />
+        <StatCard title="Historiales" value={stats.historiales} helper="registros médicos" icon="📄" />
       </section>
 
       {/* Tabs */}
@@ -95,14 +59,31 @@ export default function Home() {
         <Tabs value={tab} onChange={setTab} />
       </div>
 
-      {/* Content per tab */}
+      {/* Content */}
       <div className="mt-4">
         {tab === "mascotas" && (
-          <div className="grid grid-cols-1 gap-6 md:grid-cols-2">
-            {pets.map((p) => (
-              <PetCard key={p.id} pet={p} />
-            ))}
-          </div>
+          loading ? (
+            <GridSkeleton />
+          ) : pets.length === 0 ? (
+            <EmptyState
+              title="Aún no tienes mascotas registradas."
+              actionLabel="Registrar Mascota"
+              onAction={() => navigate("/app/pets/new")}
+            />
+          ) : (
+            <>
+              {/* si quieres, un spinner pequeño arriba a la derecha */}
+              {refreshing && (
+                <div className="text-xs text-gray-500 mb-2">Actualizando…</div>
+              )}
+
+              <div className="grid grid-cols-1 gap-6 md:grid-cols-2 lg:grid-cols-3">
+                {pets.map((p) => (
+                  <PetCard key={p.pet_id} pet={p} />
+                ))}
+              </div>
+            </>
+          )
         )}
 
         {tab === "citas" && (
@@ -130,13 +111,12 @@ export default function Home() {
         )}
       </div>
 
-      {/* Bienvenida (arriba a la derecha tipo “Bienvenido, …”) */}
       <div className="sr-only">Bienvenido, {ownerName}</div>
     </div>
   );
 }
 
-/* ----------------------- Componentes UI ----------------------- */
+/* ----------------------- UI helpers ----------------------- */
 
 function StatCard({ title, value, helper, icon }) {
   return (
@@ -181,85 +161,17 @@ function Tabs({ value, onChange }) {
   );
 }
 
-function PetCard({ pet }) {
+function GridSkeleton() {
   return (
-    <div className="rounded-2xl border bg-white shadow-sm">
-      {/* Header */}
-      <div className="flex items-center justify-between px-5 pt-4">
-        <h4 className="text-lg font-semibold">{pet.name}</h4>
-        <span className="rounded-full border px-2 py-0.5 text-xs text-gray-600">{pet.species}</span>
-      </div>
-
-      {/* Image */}
-      <div className="px-5 pt-3">
-        <div className="aspect-[16/9] w-full overflow-hidden rounded-2xl bg-gray-100">
-          <img
-            src={pet.image}
-            alt={pet.name}
-            className="h-full w-full object-cover"
-            loading="lazy"
-          />
+    <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
+      {Array.from({ length: 3 }).map((_, i) => (
+        <div key={i} className="animate-pulse rounded-2xl border bg-white p-4">
+          <div className="mb-4 h-40 w-full rounded-xl bg-gray-200" />
+          <div className="mb-2 h-5 w-1/2 rounded bg-gray-200" />
+          <div className="h-4 w-2/3 rounded bg-gray-200" />
         </div>
-      </div>
-
-      {/* Body */}
-      <div className="grid grid-cols-2 gap-x-4 gap-y-2 px-5 py-4 text-sm">
-        <Row label="Raza" value={pet.breed} />
-        <Row label="Edad" value={pet.age} />
-        <Row label="Peso" value={pet.weight} />
-        <Row
-          label="Último chequeo"
-          value={pet.lastCheck ? pet.lastCheck : <span className="text-gray-400">—</span>}
-        />
-
-        <div className="col-span-2 mt-2 flex items-center gap-2">
-          {pet.vaccines > 0 && (
-            <Badge>
-              {pet.vaccines} vacuna{pet.vaccines > 1 ? "s" : ""}
-            </Badge>
-          )}
-          {pet.records > 0 && <Badge light>{pet.records} registro</Badge>}
-        </div>
-
-        {/* Actions */}
-        <div className="col-span-2 mt-3 flex gap-3">
-          <button
-            className="flex-1 rounded-xl border px-3 py-2 text-sm hover:bg-gray-50"
-            onClick={() => alert(`Ver historial de ${pet.name}`)}
-          >
-            Ver Historial
-          </button>
-          <button
-            className="flex-1 rounded-xl bg-black px-3 py-2 text-sm text-white hover:opacity-90"
-            onClick={() => alert(`Ver citas de ${pet.name}`)}
-          >
-            🗓️ Ver Citas
-          </button>
-        </div>
-      </div>
+      ))}
     </div>
-  );
-}
-
-function Row({ label, value }) {
-  return (
-    <div className="flex items-center justify-between">
-      <span className="text-gray-500">{label}:</span>
-      <span className="font-medium">{value}</span>
-    </div>
-  );
-}
-
-function Badge({ children, light = false }) {
-  return (
-    <span
-      className={[
-        "inline-flex items-center rounded-full px-2.5 py-0.5 text-xs",
-        light ? "border" : "bg-black text-white",
-      ].join(" ")}
-    >
-      {children}
-    </span>
   );
 }
 
@@ -267,7 +179,10 @@ function EmptyState({ title, actionLabel, onAction }) {
   return (
     <div className="rounded-2xl border bg-white p-10 text-center text-gray-600">
       <p className="mb-4 text-lg">{title}</p>
-      <button onClick={onAction} className="rounded-xl bg-black px-4 py-2 text-white hover:opacity-90">
+      <button
+        onClick={onAction}
+        className="rounded-xl bg-black px-4 py-2 text-white hover:opacity-90"
+      >
         {actionLabel}
       </button>
     </div>

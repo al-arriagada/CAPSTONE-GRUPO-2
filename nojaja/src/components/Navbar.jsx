@@ -10,11 +10,13 @@ export default function Navbar() {
   // asumo que tu AuthContext expone { user, signOut, loading }
 
   const handleLogout = async () => {
+    // 1) sal de la zona privada
+    navigate("/", { replace: true });   // ⬅️ primero a Home pública
     try {
+      // 2) luego cierra sesión
       await signOut();
-      navigate("/"); // o a "/" si prefieres
-    } catch (err) {
-      console.error(err);
+    } catch (e) {
+      console.error(e);
     }
   };
 

@@ -1,6 +1,6 @@
 import { createBrowserRouter } from "react-router-dom";
 import AppLayout from "./components/AppLayout.jsx";      // Navbar + contenido privado
-import PublicLayout from "./components/PublicLayout.jsx"; // Navbar (mismo) o más simple
+import PublicLayout from "./components/PublicLayout.jsx"; // Navbar
 import HomePublic from "./components/HomePublic.jsx";
 import HomePrivate from "./components/Home.jsx";          // tu dashboard
 import Signin from "./components/Signin.jsx";
@@ -9,6 +9,7 @@ import ProtectedRoute from "./components/ProtectedRoute.jsx";
 import ResetPassword from "./components/ResetPassword.jsx";
 import UpdatePassword from "./components/UpdatePassword.jsx";
 import RedirectIfAuth from "./components/RedirectIfAuth.jsx";
+import PetForm from "./components/PetForm.jsx";
 
 const router = createBrowserRouter([
   // Rutas públicas
@@ -40,6 +41,9 @@ const router = createBrowserRouter([
             <HomePrivate />      {/* tu dashboard actual */}
           </ProtectedRoute>
         ),
+      },
+      {
+        path: "pets/new", element: <ProtectedRoute><PetForm /></ProtectedRoute>
       },
       // más rutas privadas: citas, historial, etc.
     ],
