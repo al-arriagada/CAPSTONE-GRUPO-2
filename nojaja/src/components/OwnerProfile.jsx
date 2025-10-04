@@ -6,36 +6,41 @@ import { supabase } from "../supabaseClient";
 import { useAuth } from "../context/AuthContext";
 
 export default function OwnerProfile() {
-  const { user } = useAuth(); // Supabase Auth user
+  const { user } = useAuth(); // Usuario logueado de Supabase
   const [loading, setLoading] = useState(true);
   const [formData, setFormData] = useState({
     full_name: "",
-    email: "",
     rut: "",
-    address_line: "",
+    email: "",
     phone: "",
+    birth_date: "",
+    gender: "",
+    comuna_name: "",
+    region_name: "",
   });
   const [message, setMessage] = useState("");
 
-  // Cargar datos desde app_user y user_pii
   useEffect(() => {
     const fetchProfile = async () => {
       try {
         if (!user) return;
 
-        // app_user
+        // Traer datos desde app_user
         const { data: appUser, error: appUserError } = await supabase
-          .from("app_user")
-          .select("full_name, email, rut")
-          .eq("id", user.id)
+          .from("petcare.app_user")
+          .select(
+            `full_name, rut, email, birth_date, gender, comuna_id,
+             comuna:comuna_id (name, region:region_id (name))`
+          )
+          .eq("user_id", user.id)
           .single();
 
-        if (appUserError) throw appUserError;
+        if (appUserError && appUserError.code !== "PGRST116") throw appUserError;
 
-        // user_pii
+        // Traer datos desde user_pii
         const { data: userPii, error: piiError } = await supabase
-          .from("user_pii")
-          .select("address_line, phone")
+          .from("petcare.user_pii")
+          .select("phone")
           .eq("user_id", user.id)
           .single();
 
@@ -43,10 +48,13 @@ export default function OwnerProfile() {
 
         setFormData({
           full_name: appUser?.full_name || "",
-          email: appUser?.email || "",
           rut: appUser?.rut || "",
-          address_line: userPii?.address_line || "",
+          email: appUser?.email || "",
           phone: userPii?.phone || "",
+          birth_date: appUser?.birth_date || "",
+          gender: appUser?.gender || "",
+          comuna_name: appUser?.comuna?.name || "",
+          region_name: appUser?.comuna?.region?.name || "",
         });
       } catch (err) {
         console.error("Error fetching profile:", err.message);
@@ -58,35 +66,37 @@ export default function OwnerProfile() {
     fetchProfile();
   }, [user]);
 
-  // Actualizar campos del form
+  // Manejo de cambios de inputs
   const handleChange = (e) => {
     setFormData({ ...formData, [e.target.name]: e.target.value });
   };
 
-  // Guardar cambios
+  // Guardar cambios en la DB
   const handleSave = async (e) => {
     e.preventDefault();
     setMessage("");
+
     try {
-      // app_user update
+      // Actualizar app_user
       const { error: appUserError } = await supabase
-        .from("app_user")
+        .from("petcare.app_user")
         .update({
           full_name: formData.full_name,
-          email: formData.email,
           rut: formData.rut,
+          email: formData.email,
+          birth_date: formData.birth_date,
+          gender: formData.gender,
         })
-        .eq("id", user.id);
+        .eq("user_id", user.id);
 
       if (appUserError) throw appUserError;
 
-      // user_pii upsert (si no existe, lo crea)
+      // Actualizar user_pii (upsert por si no existe)
       const { error: piiError } = await supabase
-        .from("user_pii")
+        .from("petcare.user_pii")
         .upsert(
           {
             user_id: user.id,
-            address_line: formData.address_line,
             phone: formData.phone,
           },
           { onConflict: "user_id" }
@@ -141,17 +151,6 @@ export default function OwnerProfile() {
         </div>
 
         <div>
-          <label className="block font-medium">Dirección</label>
-          <input
-            type="text"
-            name="address_line"
-            value={formData.address_line}
-            onChange={handleChange}
-            className="w-full border px-3 py-2 rounded"
-          />
-        </div>
-
-        <div>
           <label className="block font-medium">Teléfono</label>
           <input
             type="text"
@@ -159,6 +158,54 @@ export default function OwnerProfile() {
             value={formData.phone}
             onChange={handleChange}
             className="w-full border px-3 py-2 rounded"
+          />
+        </div>
+
+        <div>
+          <label className="block font-medium">Fecha de nacimiento</label>
+          <input
+            type="date"
+            name="birth_date"
+            value={formData.birth_date}
+            onChange={handleChange}
+            className="w-full border px-3 py-2 rounded"
+          />
+        </div>
+
+        <div>
+          <label className="block font-medium">Género</label>
+          <select
+            name="gender"
+            value={formData.gender}
+            onChange={handleChange}
+            className="w-full border px-3 py-2 rounded"
+          >
+            <option value="">Seleccionar</option>
+            <option value="Femenino">Femenino</option>
+            <option value="Masculino">Masculino</option>
+            <option value="Otro">Otro</option>
+          </select>
+        </div>
+
+        <div>
+          <label className="block font-medium">Comuna</label>
+          <input
+            type="text"
+            name="comuna_name"
+            value={formData.comuna_name}
+            readOnly
+            className="w-full border px-3 py-2 rounded bg-gray-100"
+          />
+        </div>
+
+        <div>
+          <label className="block font-medium">Región</label>
+          <input
+            type="text"
+            name="region_name"
+            value={formData.region_name}
+            readOnly
+            className="w-full border px-3 py-2 rounded bg-gray-100"
           />
         </div>
 
