@@ -8,4 +8,8 @@ if (!supabaseUrl || !supabaseKey) {
   console.error('Supabase URL o Key no definidas en .env')
 }
 
-export const supabase = createClient(supabaseUrl, supabaseKey)
+export const supabase = createClient(supabaseUrl, supabaseKey, {
+  global: {
+    schema: 'petcare',
+  },
+})
