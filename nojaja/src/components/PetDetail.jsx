@@ -25,7 +25,7 @@ export default function PetDetail() {
   const [formData, setFormData] = useState({
     name: '', species_id: '', breed: '', sex_id: '', birth_date: '',
     image_url: '', microchip: '', neutered: false, origin_id: '',
-    acquired_at: '', status_id: '', weight_kg: ''
+    acquired_at: '', status_id: '', current_weight: ''
   });
 
   // Cargar catálogos al iniciar
@@ -80,7 +80,7 @@ export default function PetDetail() {
         origin_id: data.origin_id || '',
         acquired_at: data.acquired_at || '',
         status_id: data.status_id || '',
-        weight_kg: data.weight_kg?.toString() || ''
+        weight_kg: data.current_weight?.toString() || ''
       });
     }
     setLoading(false);
@@ -110,7 +110,7 @@ export default function PetDetail() {
     if (formData.origin_id) updateData.origin_id = formData.origin_id;
     if (formData.acquired_at) updateData.acquired_at = formData.acquired_at;
     if (formData.status_id) updateData.status_id = formData.status_id;
-    if (formData.weight_kg && formData.weight_kg !== '') updateData.weight_kg = parseFloat(formData.weight_kg);
+    if (formData.current_weight && formData.current_weight !== '') updateData.current_weight = parseFloat(formData.current_weight);
 
     const { error: updateError } = await supabase
       .schema("petcare")
@@ -149,7 +149,7 @@ export default function PetDetail() {
         origin_id: pet.origin_id || '',
         acquired_at: pet.acquired_at || '',
         status_id: pet.status_id || '',
-        weight_kg: pet.weight_kg?.toString() || ''
+        weight_kg: pet.current_weight?.toString() || ''
       });
     }
     setError('');
@@ -449,12 +449,12 @@ export default function PetDetail() {
             <input
               type="number"
               step="0.1"
-              value={formData.weight_kg}
-              onChange={(e) => setFormData({...formData, weight_kg: e.target.value})}
+              value={formData.current_weight}
+              onChange={(e) => setFormData({...formData, current_weight: e.target.value})}
               className="w-full px-3 py-2 border rounded-lg mt-1"
             />
           ) : (
-            pet.weight_kg ? `${pet.weight_kg} kg` : "—"
+            pet.current_weight ? `${pet.current_weight} kg` : "—"
           )}
         </Info>
       </div>
