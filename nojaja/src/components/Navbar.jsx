@@ -2,12 +2,13 @@
 import React, { useState } from "react";
 import { Link, NavLink, useNavigate } from "react-router-dom";
 import { useAuth } from "../context/AuthContext.jsx";
+import useProfile from "../hooks/useProfile.js";
 
 export default function Navbar() {
   const [open, setOpen] = useState(false);
   const navigate = useNavigate();
   const { user, signOut, loading } = useAuth(); 
-  // asumo que tu AuthContext expone { user, signOut, loading }
+  const { displayName, loading: loadingProfile } = useProfile(user);
 
   const handleLogout = async () => {
     // 1) sal de la zona privada
@@ -44,7 +45,12 @@ export default function Navbar() {
           {loading ? (
             <div className="h-8 w-24 animate-pulse rounded-md bg-gray-200" />
           ) : user ? (
-            <UserMenu user={user} onLogout={handleLogout} />
+              <UserMenu
+                user={user}
+                name={displayName}
+                loadingName={loadingProfile}
+                onLogout={handleLogout}
+              />
           ) : (
             <>
               <Link
@@ -90,7 +96,7 @@ export default function Navbar() {
                   <Avatar fallback={user?.email} />
                   <div className="text-sm">
                     <div className="font-medium leading-tight">
-                      {user?.user_metadata?.name || user?.email}
+                      {loadingProfile ? "Cargando..." : (displayName || user?.email)}
                     </div>
                     <div className="text-gray-500">Sesión activa</div>
                   </div>
@@ -147,13 +153,13 @@ function NavItem({ to, end, children, onClick }) {
   );
 }
 
-function UserMenu({ user, onLogout }) {
+function UserMenu({ user, name, loadingName, onLogout }) {
   return (
     <div className="flex items-center gap-3">
       <Avatar fallback={user?.email} />
       <span className="hidden text-sm text-gray-700 sm:inline">
         Bienvenido,{" "}
-        <strong>{user?.user_metadata?.name || user?.email?.split("@")[0]}</strong>
+        <strong>{loadingName ? "..." : (name || user?.email?.split("@")[0])}</strong>
       </span>
       <button
         onClick={onLogout}

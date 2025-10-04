@@ -1,3 +1,4 @@
+// src/router.jsx
 import { createBrowserRouter } from "react-router-dom";
 import AppLayout from "./components/AppLayout.jsx";      // Navbar + contenido privado
 import PublicLayout from "./components/PublicLayout.jsx"; // Navbar
@@ -10,7 +11,8 @@ import ResetPassword from "./components/ResetPassword.jsx";
 import UpdatePassword from "./components/UpdatePassword.jsx";
 import RedirectIfAuth from "./components/RedirectIfAuth.jsx";
 import PetForm from "./components/PetForm.jsx";
-import OwnerProfile from "./components/OwnerProfile.jsx"; // ✅ correcto
+import OwnerProfile from "./components/OwnerProfile.jsx";
+import PetDetail from "./components/PetDetail.jsx";      // ⬅️ NUEVO
 
 const router = createBrowserRouter([
   // Rutas públicas
@@ -36,7 +38,7 @@ const router = createBrowserRouter([
     ),
   },
 
-  // Rutas privadas
+  // Rutas privadas (/app)
   {
     path: "/app",
     element: <AppLayout />,
@@ -50,7 +52,7 @@ const router = createBrowserRouter([
         ),
       },
       {
-        path: "profile", // 👈 ahora existe /app/profile
+        path: "profile",
         element: (
           <ProtectedRoute>
             <OwnerProfile />
@@ -58,15 +60,42 @@ const router = createBrowserRouter([
         ),
       },
       {
-        path: "pets/new", element: <ProtectedRoute><PetForm /></ProtectedRoute>
+        path: "pets/new",
+        element: (
+          <ProtectedRoute>
+            <PetForm /> {/* modo crear */}
+          </ProtectedRoute>
+        ),
       },
-      // más rutas privadas: citas, historial, etc.
+      {
+        path: "pets/:id",
+        element: (
+          <ProtectedRoute>
+            <PetDetail /> {/* detalle */}
+          </ProtectedRoute>
+        ),
+      },
+      {
+        path: "pets/:id/edit",
+        element: (
+          <ProtectedRoute>
+            <PetForm mode="edit" /> {/* modo edición */}
+          </ProtectedRoute>
+        ),
+      },
+      // aquí podrás agregar: citas, historial, etc.
     ],
   },
 
   // Reset / Update Password
   { path: "/reset-password", element: <ResetPassword /> },
   { path: "/update-password", element: <UpdatePassword /> },
+
+  // 404 opcional
+  {
+    path: "*",
+    element: <div className="p-6 text-center text-gray-600">Página no encontrada</div>,
+  },
 ]);
 
 export default router;
