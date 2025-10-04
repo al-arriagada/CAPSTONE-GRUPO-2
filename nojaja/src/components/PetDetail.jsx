@@ -9,8 +9,10 @@ export default function PetDetail() {
   const { user } = useAuth();
 
   const [pet, setPet] = useState(null);
+  const [owner, setOwner] = useState(null);
   const [loading, setLoading] = useState(true);
   const [deleting, setDeleting] = useState(false);
+  const [activeTab, setActiveTab] = useState('id');
   const [isEditing, setIsEditing] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
@@ -80,10 +82,36 @@ export default function PetDetail() {
         origin_id: data.origin_id || '',
         acquired_at: data.acquired_at || '',
         status_id: data.status_id || '',
-        weight_kg: data.current_weight?.toString() || ''
+        current_weight: data.current_weight?.toString() || ''
       });
+
+      // Cargar datos del dueño
+      const { data: userData } = await supabase
+        .schema("petcare")
+        .from("user")
+        .select("user_id, name, email, phone, address")
+        .eq("user_id", data.user_id)
+        .maybeSingle();
+      
+      if (userData) setOwner(userData);
     }
     setLoading(false);
+  };
+
+  const calculateAge = (birthDate) => {
+    if (!birthDate) return null;
+    const today = new Date();
+    const birth = new Date(birthDate);
+    let years = today.getFullYear() - birth.getFullYear();
+    let months = today.getMonth() - birth.getMonth();
+    
+    if (months < 0) {
+      years--;
+      months += 12;
+    }
+    
+    if (years === 0) return `${months} ${months === 1 ? 'mes' : 'meses'}`;
+    return `${years} ${years === 1 ? 'año' : 'años'}${months > 0 ? ` y ${months} ${months === 1 ? 'mes' : 'meses'}` : ''}`;
   };
 
   const handleSave = async () => {
@@ -96,10 +124,7 @@ export default function PetDetail() {
     setError('');
     setSuccess('');
 
-    const updateData = {
-      name: formData.name.trim(),
-      neutered: formData.neutered
-    };
+    const updateData = { name: formData.name.trim(), neutered: formData.neutered };
 
     if (formData.species_id) updateData.species_id = formData.species_id;
     if (formData.breed && formData.breed.trim()) updateData.breed = formData.breed.trim();
@@ -121,7 +146,6 @@ export default function PetDetail() {
     setSaving(false);
 
     if (updateError) {
-      console.error('Error completo:', updateError);
       setError(`Error: ${updateError.message}`);
       return;
     }
@@ -149,7 +173,7 @@ export default function PetDetail() {
         origin_id: pet.origin_id || '',
         acquired_at: pet.acquired_at || '',
         status_id: pet.status_id || '',
-        weight_kg: pet.current_weight?.toString() || ''
+        current_weight: pet.current_weight?.toString() || ''
       });
     }
     setError('');
@@ -173,300 +197,426 @@ export default function PetDetail() {
     navigate("/app");
   };
 
-  // Funciones helper para mostrar nombres
-  const getSpeciesName = (id) => {
-    const s = species.find(sp => sp.species_id === id);
-    return s ? s.display_name : "—";
-  };
-
-  const getSexName = (id) => {
-    const s = sexes.find(sx => sx.sex_id === id);
-    return s ? s.display_name : "—";
-  };
-
-  const getOriginName = (id) => {
-    const o = origins.find(or => or.origin_id === id);
-    return o ? o.display_name : "—";
-  };
-
-  const getStatusName = (id) => {
-    const s = statuses.find(st => st.status_id === id);
-    return s ? s.display_name : "—";
-  };
+  // Funciones helper
+  const getSpeciesName = (id) => species.find(sp => sp.species_id === id)?.display_name || "—";
+  const getSexName = (id) => sexes.find(sx => sx.sex_id === id)?.display_name || "—";
+  const getOriginName = (id) => origins.find(or => or.origin_id === id)?.display_name || "—";
+  const getStatusName = (id) => statuses.find(st => st.status_id === id)?.display_name || "—";
 
   if (loading) {
     return (
-      <div className="mx-auto max-w-5xl p-6">
-        <div className="h-48 animate-pulse rounded-2xl bg-gray-100" />
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-gray-900"></div>
       </div>
     );
   }
 
   if (!pet) {
     return (
-      <div className="mx-auto max-w-5xl p-6">
-        <p className="text-gray-600">Mascota no encontrada.</p>
-        <Link className="text-black underline" to="/app">Volver</Link>
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+        <div className="text-center">
+          <p className="text-gray-600 mb-4">Mascota no encontrada</p>
+          <Link to="/app" className="text-blue-600 hover:underline">Volver al Dashboard</Link>
+        </div>
       </div>
     );
   }
 
   const canEdit = user && pet.user_id === user.id;
+  const age = calculateAge(pet.birth_date);
 
   return (
-    <div className="mx-auto max-w-5xl p-6">
+    <div className="min-h-screen bg-gray-50">
       {/* Header */}
-      <div className="flex flex-col items-start justify-between gap-3 sm:flex-row sm:items-center mb-4">
-        <h1 className="text-2xl font-semibold">{pet.name}</h1>
-        <div className="flex gap-2">
-          {canEdit && !isEditing && (
-            <>
-              <button
-                onClick={() => setIsEditing(true)}
-                className="rounded-xl border px-3 py-1.5 text-sm hover:bg-gray-50"
-              >
-                Editar
-              </button>
-              <button
-                onClick={handleDelete}
-                disabled={deleting}
-                className="rounded-xl bg-black px-3 py-1.5 text-sm text-white hover:opacity-90 disabled:opacity-50"
-              >
-                {deleting ? "Eliminando..." : "Eliminar"}
-              </button>
-            </>
-          )}
+      <div className="bg-white border-b">
+        <div className="max-w-5xl mx-auto px-6 py-4">
+          <div className="flex items-center justify-between">
+            <button
+              onClick={() => navigate('/app')}
+              className="flex items-center gap-2 text-gray-600 hover:text-gray-900 text-sm"
+            >
+              ← Volver al Dashboard
+            </button>
+            
+            {canEdit && !isEditing && (
+              <div className="flex gap-2">
+                <button
+                  onClick={() => setIsEditing(true)}
+                  className="px-4 py-2 bg-black text-white rounded-lg text-sm hover:bg-gray-800 flex items-center gap-2"
+                >
+                  ✏️ Editar Perfil
+                </button>
+                <button
+                  onClick={handleDelete}
+                  disabled={deleting}
+                  className="px-4 py-2 bg-red-600 text-white rounded-lg text-sm hover:bg-red-700 disabled:opacity-50"
+                >
+                  {deleting ? "Eliminando..." : "Eliminar"}
+                </button>
+              </div>
+            )}
+
+            {isEditing && (
+              <div className="flex gap-2">
+                <button
+                  onClick={handleSave}
+                  disabled={saving}
+                  className="px-4 py-2 bg-green-600 text-white rounded-lg text-sm hover:bg-green-700 disabled:opacity-50"
+                >
+                  {saving ? 'Guardando...' : '💾 Guardar'}
+                </button>
+                <button
+                  onClick={handleCancel}
+                  className="px-4 py-2 border rounded-lg text-sm hover:bg-gray-50"
+                >
+                  ✖️ Cancelar
+                </button>
+              </div>
+            )}
+          </div>
           
-          {isEditing && (
-            <>
-              <button
-                onClick={handleSave}
-                disabled={saving}
-                className="rounded-xl bg-green-600 px-3 py-1.5 text-sm text-white hover:bg-green-700 disabled:opacity-50"
-              >
-                {saving ? 'Guardando...' : 'Guardar'}
-              </button>
-              <button
-                onClick={handleCancel}
-                className="rounded-xl border px-3 py-1.5 text-sm hover:bg-gray-50"
-              >
-                Cancelar
-              </button>
-            </>
-          )}
-          
-          <Link to="/app" className="rounded-xl border px-3 py-1.5 text-sm hover:bg-gray-50">
-            Volver
-          </Link>
+          <div className="mt-4">
+            <h1 className="text-3xl font-bold">{pet.name}</h1>
+            <p className="text-gray-500 text-sm mt-1">Perfil de mascota</p>
+          </div>
         </div>
       </div>
 
-      {/* Mensajes */}
-      {error && (
-        <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-xl">
-          <p className="text-red-600 text-sm">{error}</p>
+      <div className="max-w-5xl mx-auto px-6 py-8">
+        {/* Mensajes */}
+        {error && (
+          <div className="mb-6 p-4 bg-red-50 border border-red-200 rounded-xl">
+            <p className="text-red-600 text-sm">{error}</p>
+          </div>
+        )}
+        {success && (
+          <div className="mb-6 p-4 bg-green-50 border border-green-200 rounded-xl">
+            <p className="text-green-600 text-sm">{success}</p>
+          </div>
+        )}
+
+        {/* Card principal */}
+        <div className="bg-white rounded-2xl border shadow-sm p-8 mb-6">
+          <div className="flex items-start gap-8">
+            <div className="flex-shrink-0">
+              <div className="w-32 h-32 rounded-full overflow-hidden bg-gray-100">
+                <img
+                  src={pet.image_url || "/placeholder-pet.jpg"}
+                  alt={pet.name}
+                  className="w-full h-full object-cover"
+                />
+              </div>
+            </div>
+            
+            <div className="flex-1">
+              <h2 className="text-2xl font-semibold mb-4">{pet.name}</h2>
+              <div className="flex gap-4 text-sm mb-4">
+                {getSpeciesName(pet.species_id) !== "—" && (
+                  <span className="px-3 py-1 bg-gray-100 rounded-full font-medium">
+                    {getSpeciesName(pet.species_id)}
+                  </span>
+                )}
+                {pet.breed && (
+                  <span className="px-3 py-1 bg-gray-100 rounded-full font-medium">
+                    {pet.breed}
+                  </span>
+                )}
+              </div>
+              
+              {age && (
+                <div className="flex items-center gap-2 text-gray-600 mb-2">
+                  <span>📅</span>
+                  <span>{age}</span>
+                </div>
+              )}
+              
+              {pet.birth_date && (
+                <p className="text-sm text-gray-500">
+                  Fecha de nacimiento: {new Date(pet.birth_date).toLocaleDateString('es-ES', {day: '2-digit', month: '2-digit', year: 'numeric'})}
+                </p>
+              )}
+            </div>
+          </div>
         </div>
-      )}
-      {success && (
-        <div className="mb-4 p-3 bg-green-50 border border-green-200 rounded-xl">
-          <p className="text-green-600 text-sm">{success}</p>
-        </div>
-      )}
 
-      {/* Imagen */}
-      <div className="mt-4 overflow-hidden rounded-2xl bg-gray-100">
-        <img
-          src={(isEditing ? formData.image_url : pet.image_url) || "/placeholder-pet.jpg"}
-          alt={pet.name}
-          className="h-[320px] w-full object-cover"
-        />
-      </div>
+        {/* Tabs */}
+        {!isEditing && (
+          <>
+            <div className="bg-white rounded-t-2xl border-t border-x shadow-sm">
+              <div className="flex border-b">
+                <button
+                  onClick={() => setActiveTab('id')}
+                  className={`flex-1 px-6 py-4 text-sm font-medium transition-colors ${
+                    activeTab === 'id' ? 'border-b-2 border-black text-black' : 'text-gray-500 hover:text-gray-700'
+                  }`}
+                >
+                  ID
+                </button>
+                <button
+                  onClick={() => setActiveTab('perfil')}
+                  className={`flex-1 px-6 py-4 text-sm font-medium transition-colors ${
+                    activeTab === 'perfil' ? 'border-b-2 border-black text-black' : 'text-gray-500 hover:text-gray-700'
+                  }`}
+                >
+                  Perfil
+                </button>
+                <button
+                  onClick={() => setActiveTab('historial')}
+                  className={`flex-1 px-6 py-4 text-sm font-medium transition-colors ${
+                    activeTab === 'historial' ? 'border-b-2 border-black text-black' : 'text-gray-500 hover:text-gray-700'
+                  }`}
+                >
+                  Historial médico
+                </button>
+                <button
+                  onClick={() => setActiveTab('rutinas')}
+                  className={`flex-1 px-6 py-4 text-sm font-medium transition-colors ${
+                    activeTab === 'rutinas' ? 'border-b-2 border-black text-black' : 'text-gray-500 hover:text-gray-700'
+                  }`}
+                >
+                  Rutinas y eventos
+                </button>
+              </div>
+            </div>
 
-      {isEditing && (
-        <div className="mt-4">
-          <label className="block text-sm font-medium text-gray-700 mb-2">
-            URL de imagen
-          </label>
-          <input
-            type="url"
-            value={formData.image_url}
-            onChange={(e) => setFormData({...formData, image_url: e.target.value})}
-            className="w-full px-3 py-2 border rounded-xl"
-            placeholder="https://..."
-          />
-        </div>
-      )}
+            <div className="bg-white rounded-b-2xl border-x border-b shadow-sm p-8">
+              {activeTab === 'id' && (
+                <div>
+                  <div className="flex items-center gap-3 mb-6">
+                    <span className="text-2xl">🔲</span>
+                    <h3 className="text-xl font-semibold">Identificación QR de {pet.name}</h3>
+                  </div>
+                  
+                  <p className="text-gray-600 mb-6">
+                    Genera un código QR único para tu mascota. Al escanearlo, mostrará información de contacto del dueño y datos básicos de la mascota.
+                  </p>
+                  
+                  <button className="px-6 py-3 bg-black text-white rounded-xl hover:bg-gray-800">
+                    🔲 Generar Código QR
+                  </button>
 
-      {/* Info */}
-      <div className="mt-6 grid grid-cols-1 gap-4 sm:grid-cols-2">
-        <Info label="Nombre">
-          {isEditing ? (
-            <input
-              type="text"
-              value={formData.name}
-              onChange={(e) => setFormData({...formData, name: e.target.value})}
-              className="w-full px-3 py-2 border rounded-lg mt-1"
-            />
-          ) : (
-            pet.name
-          )}
-        </Info>
+                  {owner && (
+                    <div className="mt-8 p-6 border rounded-2xl bg-gray-50">
+                      <h4 className="font-semibold mb-4">Información Visible al Escanear</h4>
+                      <p className="text-sm text-gray-600 mb-4">
+                        Al escanear el código QR, se mostrará la siguiente información:
+                      </p>
 
-        <Info label="Especie">
-          {isEditing ? (
-            <select
-              value={formData.species_id}
-              onChange={(e) => setFormData({...formData, species_id: e.target.value})}
-              className="w-full px-3 py-2 border rounded-lg mt-1 bg-white"
-            >
-              <option value="">Seleccionar...</option>
-              {species.map((s) => (
-                <option key={s.species_id} value={s.species_id}>
-                  {s.display_name}
-                </option>
-              ))}
-            </select>
-          ) : (
-            getSpeciesName(pet.species_id)
-          )}
-        </Info>
+                      <div className="space-y-6">
+                        <div>
+                          <h5 className="font-medium mb-3">💝 Información del Dueño:</h5>
+                          <div className="ml-6 space-y-2 text-sm">
+                            <p>❤️ {owner.name}</p>
+                            {owner.phone && <p><span className="font-medium">Teléfono:</span> {owner.phone}</p>}
+                            {owner.email && <p><span className="font-medium">Email:</span> {owner.email}</p>}
+                          </div>
+                        </div>
 
-        <Info label="Sexo">
-          {isEditing ? (
-            <select
-              value={formData.sex_id}
-              onChange={(e) => setFormData({...formData, sex_id: e.target.value})}
-              className="w-full px-3 py-2 border rounded-lg mt-1 bg-white"
-            >
-              <option value="">Seleccionar...</option>
-              {sexes.map((s) => (
-                <option key={s.sex_id} value={s.sex_id}>
-                  {s.display_name}
-                </option>
-              ))}
-            </select>
-          ) : (
-            getSexName(pet.sex_id)
-          )}
-        </Info>
+                        <div>
+                          <h5 className="font-medium mb-3">Información de la Mascota:</h5>
+                          <div className="ml-6 space-y-2 text-sm">
+                            <div className="flex items-center gap-2">
+                              <div className="w-8 h-8 rounded-full overflow-hidden bg-gray-200">
+                                <img src={pet.image_url || "/placeholder-pet.jpg"} alt={pet.name} className="w-full h-full object-cover" />
+                              </div>
+                              <span>{pet.name}</span>
+                            </div>
+                            {getSpeciesName(pet.species_id) !== "—" && <p><span className="font-medium">Especie:</span> {getSpeciesName(pet.species_id)}</p>}
+                            {pet.breed && <p><span className="font-medium">Raza:</span> {pet.breed}</p>}
+                            {pet.microchip && <p><span className="font-medium">Microchip:</span> {pet.microchip}</p>}
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
 
-        <Info label="Raza">
-          {isEditing ? (
-            <input
-              type="text"
-              value={formData.breed}
-              onChange={(e) => setFormData({...formData, breed: e.target.value})}
-              className="w-full px-3 py-2 border rounded-lg mt-1"
-            />
-          ) : (
-            pet.breed || "—"
-          )}
-        </Info>
+              {activeTab === 'perfil' && (
+                <div>
+                  <h3 className="text-xl font-semibold mb-6">Información del Perfil</h3>
+                  <div className="grid grid-cols-2 gap-6">
+                    <InfoItem label="Especie" value={getSpeciesName(pet.species_id)} />
+                    <InfoItem label="Raza" value={pet.breed || '—'} />
+                    <InfoItem label="Sexo" value={getSexName(pet.sex_id)} />
+                    <InfoItem label="Microchip" value={pet.microchip || '—'} />
+                    <InfoItem label="Esterilizado/a" value={pet.neutered ? 'Sí' : 'No'} />
+                    <InfoItem label="Peso" value={pet.current_weight ? `${pet.current_weight} kg` : '—'} />
+                    <InfoItem label="Origen" value={getOriginName(pet.origin_id)} />
+                    <InfoItem label="Estado" value={getStatusName(pet.status_id)} />
+                  </div>
+                </div>
+              )}
 
-        <Info label="Origen">
-          {isEditing ? (
-            <select
-              value={formData.origin_id}
-              onChange={(e) => setFormData({...formData, origin_id: e.target.value})}
-              className="w-full px-3 py-2 border rounded-lg mt-1 bg-white"
-            >
-              <option value="">Seleccionar...</option>
-              {origins.map((o) => (
-                <option key={o.origin_id} value={o.origin_id}>
-                  {o.display_name}
-                </option>
-              ))}
-            </select>
-          ) : (
-            getOriginName(pet.origin_id)
-          )}
-        </Info>
+              {activeTab === 'historial' && (
+                <div>
+                  <h3 className="text-xl font-semibold mb-6">Historial Médico</h3>
+                  <p className="text-gray-500">No hay registros médicos disponibles.</p>
+                </div>
+              )}
 
-        <Info label="Microchip">
-          {isEditing ? (
-            <input
-              type="text"
-              value={formData.microchip}
-              onChange={(e) => setFormData({...formData, microchip: e.target.value})}
-              className="w-full px-3 py-2 border rounded-lg mt-1"
-            />
-          ) : (
-            pet.microchip || "—"
-          )}
-        </Info>
+              {activeTab === 'rutinas' && (
+                <div>
+                  <h3 className="text-xl font-semibold mb-6">Rutinas y Eventos</h3>
+                  <p className="text-gray-500">No hay rutinas o eventos registrados.</p>
+                </div>
+              )}
+            </div>
+          </>
+        )}
 
-        <Info label="Esterilizado/a">
-          {isEditing ? (
-            <label className="flex items-center gap-2 mt-1">
-              <input
-                type="checkbox"
-                checked={formData.neutered}
-                onChange={(e) => setFormData({...formData, neutered: e.target.checked})}
-                className="w-4 h-4"
-              />
-              <span className="text-sm">Sí</span>
-            </label>
-          ) : (
-            pet.neutered ? "Sí" : "No"
-          )}
-        </Info>
+        {/* Formulario de edición */}
+        {isEditing && (
+          <div className="bg-white rounded-2xl border shadow-sm p-8">
+            <h3 className="text-xl font-semibold mb-6">Editar Información</h3>
+            
+            <div className="space-y-6">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
+                <EditField label="Nombre *">
+                  <input
+                    type="text"
+                    value={formData.name}
+                    onChange={(e) => setFormData({...formData, name: e.target.value})}
+                    className="w-full px-4 py-2 border rounded-xl"
+                  />
+                </EditField>
 
-        <Info label="Nacimiento">
-          {isEditing ? (
-            <input
-              type="date"
-              value={formData.birth_date}
-              onChange={(e) => setFormData({...formData, birth_date: e.target.value})}
-              className="w-full px-3 py-2 border rounded-lg mt-1"
-              max={new Date().toISOString().split('T')[0]}
-            />
-          ) : (
-            pet.birth_date ? new Date(pet.birth_date).toLocaleDateString() : "—"
-          )}
-        </Info>
+                <EditField label="Especie">
+                  <select
+                    value={formData.species_id}
+                    onChange={(e) => setFormData({...formData, species_id: e.target.value})}
+                    className="w-full px-4 py-2 border rounded-xl bg-white"
+                  >
+                    <option value="">Seleccionar...</option>
+                    {species.map((s) => (
+                      <option key={s.species_id} value={s.species_id}>{s.display_name}</option>
+                    ))}
+                  </select>
+                </EditField>
 
-        <Info label="Estado">
-          {isEditing ? (
-            <select
-              value={formData.status_id}
-              onChange={(e) => setFormData({...formData, status_id: e.target.value})}
-              className="w-full px-3 py-2 border rounded-lg mt-1 bg-white"
-            >
-              <option value="">Seleccionar...</option>
-              {statuses.map((s) => (
-                <option key={s.status_id} value={s.status_id}>
-                  {s.display_name}
-                </option>
-              ))}
-            </select>
-          ) : (
-            getStatusName(pet.status_id)
-          )}
-        </Info>
+                <EditField label="Raza">
+                  <input
+                    type="text"
+                    value={formData.breed}
+                    onChange={(e) => setFormData({...formData, breed: e.target.value})}
+                    className="w-full px-4 py-2 border rounded-xl"
+                  />
+                </EditField>
 
-        <Info label="Peso (kg)">
-          {isEditing ? (
-            <input
-              type="number"
-              step="0.1"
-              value={formData.current_weight}
-              onChange={(e) => setFormData({...formData, current_weight: e.target.value})}
-              className="w-full px-3 py-2 border rounded-lg mt-1"
-            />
-          ) : (
-            pet.current_weight ? `${pet.current_weight} kg` : "—"
-          )}
-        </Info>
+                <EditField label="Sexo">
+                  <select
+                    value={formData.sex_id}
+                    onChange={(e) => setFormData({...formData, sex_id: e.target.value})}
+                    className="w-full px-4 py-2 border rounded-xl bg-white"
+                  >
+                    <option value="">Seleccionar...</option>
+                    {sexes.map((s) => (
+                      <option key={s.sex_id} value={s.sex_id}>{s.display_name}</option>
+                    ))}
+                  </select>
+                </EditField>
+
+                <EditField label="Fecha de nacimiento">
+                  <input
+                    type="date"
+                    value={formData.birth_date}
+                    onChange={(e) => setFormData({...formData, birth_date: e.target.value})}
+                    className="w-full px-4 py-2 border rounded-xl"
+                    max={new Date().toISOString().split('T')[0]}
+                  />
+                </EditField>
+
+                <EditField label="Microchip">
+                  <input
+                    type="text"
+                    value={formData.microchip}
+                    onChange={(e) => setFormData({...formData, microchip: e.target.value})}
+                    className="w-full px-4 py-2 border rounded-xl"
+                  />
+                </EditField>
+
+                <EditField label="Peso (kg)">
+                  <input
+                    type="number"
+                    step="0.1"
+                    value={formData.current_weight}
+                    onChange={(e) => setFormData({...formData, current_weight: e.target.value})}
+                    className="w-full px-4 py-2 border rounded-xl"
+                  />
+                </EditField>
+
+                <EditField label="Origen">
+                  <select
+                    value={formData.origin_id}
+                    onChange={(e) => setFormData({...formData, origin_id: e.target.value})}
+                    className="w-full px-4 py-2 border rounded-xl bg-white"
+                  >
+                    <option value="">Seleccionar...</option>
+                    {origins.map((o) => (
+                      <option key={o.origin_id} value={o.origin_id}>{o.display_name}</option>
+                    ))}
+                  </select>
+                </EditField>
+
+                <EditField label="Estado">
+                  <select
+                    value={formData.status_id}
+                    onChange={(e) => setFormData({...formData, status_id: e.target.value})}
+                    className="w-full px-4 py-2 border rounded-xl bg-white"
+                  >
+                    <option value="">Seleccionar...</option>
+                    {statuses.map((s) => (
+                      <option key={s.status_id} value={s.status_id}>{s.display_name}</option>
+                    ))}
+                  </select>
+                </EditField>
+
+                <div className="sm:col-span-2">
+                  <label className="flex items-center gap-3 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={formData.neutered}
+                      onChange={(e) => setFormData({...formData, neutered: e.target.checked})}
+                      className="w-5 h-5"
+                    />
+                    <span className="text-sm font-medium">Esterilizado/Castrado</span>
+                  </label>
+                </div>
+
+                <div className="sm:col-span-2">
+                  <EditField label="URL de imagen">
+                    <input
+                      type="url"
+                      value={formData.image_url}
+                      onChange={(e) => setFormData({...formData, image_url: e.target.value})}
+                      className="w-full px-4 py-2 border rounded-xl"
+                      placeholder="https://..."
+                    />
+                  </EditField>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );
 }
 
-function Info({ label, children }) {
+function InfoItem({ label, value }) {
   return (
-    <div className="rounded-2xl border bg-white p-4">
-      <div className="text-sm text-gray-500">{label}</div>
-      <div className="mt-1 font-medium">{children}</div>
+    <div>
+      <dt className="text-sm text-gray-500 mb-1">{label}</dt>
+      <dd className="font-medium">{value}</dd>
+    </div>
+  );
+}
+
+function EditField({ label, children }) {
+  return (
+    <div>
+      <label className="block text-sm font-medium text-gray-700 mb-2">{label}</label>
+      {children}
     </div>
   );
 }
