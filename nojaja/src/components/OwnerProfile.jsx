@@ -6,7 +6,7 @@ import { supabase } from "../supabaseClient";
 import { useAuth } from "../context/AuthContext";
 
 export default function OwnerProfile() {
-  const { user } = useAuth(); // Usuario logueado de Supabase
+  const { user } = useAuth();
   const [loading, setLoading] = useState(true);
   const [formData, setFormData] = useState({
     full_name: "",
@@ -25,26 +25,23 @@ export default function OwnerProfile() {
       try {
         if (!user) return;
 
-        // Traer datos desde app_user
+        // Traer datos desde app_user_full
         const { data: appUser, error: appUserError } = await supabase
-          .from("petcare.app_user")
-          .select(
-            `full_name, rut, email, birth_date, gender, comuna_id,
-             comuna:comuna_id (name, region:region_id (name))`
-          )
+          .from("app_user_full")
+          .select("*")
           .eq("user_id", user.id)
           .single();
 
-        if (appUserError && appUserError.code !== "PGRST116") throw appUserError;
+        if (appUserError) throw appUserError;
 
-        // Traer datos desde user_pii
+        // Traer datos desde user_pii_public
         const { data: userPii, error: piiError } = await supabase
-          .from("petcare.user_pii")
+          .from("user_pii_public")
           .select("phone")
           .eq("user_id", user.id)
           .single();
 
-        if (piiError && piiError.code !== "PGRST116") throw piiError;
+        if (piiError) throw piiError;
 
         setFormData({
           full_name: appUser?.full_name || "",
@@ -53,8 +50,8 @@ export default function OwnerProfile() {
           phone: userPii?.phone || "",
           birth_date: appUser?.birth_date || "",
           gender: appUser?.gender || "",
-          comuna_name: appUser?.comuna?.name || "",
-          region_name: appUser?.comuna?.region?.name || "",
+          comuna_name: appUser?.comuna_name || "",
+          region_name: appUser?.region_name || "",
         });
       } catch (err) {
         console.error("Error fetching profile:", err.message);
@@ -66,20 +63,18 @@ export default function OwnerProfile() {
     fetchProfile();
   }, [user]);
 
-  // Manejo de cambios de inputs
   const handleChange = (e) => {
     setFormData({ ...formData, [e.target.name]: e.target.value });
   };
 
-  // Guardar cambios en la DB
   const handleSave = async (e) => {
     e.preventDefault();
     setMessage("");
 
     try {
-      // Actualizar app_user
+      // Actualizar app_user directamente en petcare.app_user
       const { error: appUserError } = await supabase
-        .from("petcare.app_user")
+        .from("app_user")
         .update({
           full_name: formData.full_name,
           rut: formData.rut,
@@ -91,9 +86,9 @@ export default function OwnerProfile() {
 
       if (appUserError) throw appUserError;
 
-      // Actualizar user_pii (upsert por si no existe)
+      // Actualizar user_pii
       const { error: piiError } = await supabase
-        .from("petcare.user_pii")
+        .from("user_pii")
         .upsert(
           {
             user_id: user.id,
