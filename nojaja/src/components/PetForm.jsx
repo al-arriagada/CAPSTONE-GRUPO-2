@@ -8,19 +8,19 @@ import { upsertAppUserFromAuthUser } from "../services/profile";
 
 export default function PetForm({ mode = "create" }) {
   const isEdit = mode === "edit";
-  const { id } = useParams();            // pet_id cuando edit
+  const { id } = useParams();
   const { user } = useAuth();
   const navigate = useNavigate();
 
-  // catálogos
   const [species, setSpecies] = useState([]);
   const [sexes, setSexes] = useState([]);
   const [origins, setOrigins] = useState([]);
 
   const [saving, setSaving] = useState(false);
   const [err, setErr] = useState("");
+  const [microchipError, setMicrochipError] = useState("");
+  const [weightError, setWeightError] = useState("");
 
-  // foto actual (para previsualizar en edit si existe)
   const [currentImageUrl, setCurrentImageUrl] = useState(null);
 
   const [form, setForm] = useState({
@@ -33,10 +33,10 @@ export default function PetForm({ mode = "create" }) {
     neutered: false,
     origin_id: "unknown",
     acquired_at: "",
-    photo: null,        // File
+    current_weight: "",
+    photo: null,
   });
 
-  // Util: formatear fechas a YYYY-MM-DD (para inputs date)
   const toDateInput = (d) => {
     if (!d) return "";
     try {
@@ -48,7 +48,6 @@ export default function PetForm({ mode = "create" }) {
     }
   };
 
-  // Cargar catálogos
   useEffect(() => {
     const loadCatalogs = async () => {
       const [sp, sx, or] = await Promise.all([
@@ -67,7 +66,6 @@ export default function PetForm({ mode = "create" }) {
     loadCatalogs();
   }, []);
 
-  // Si es edición, cargar la mascota
   useEffect(() => {
     if (!isEdit || !id) return;
     let abort = false;
@@ -104,7 +102,8 @@ export default function PetForm({ mode = "create" }) {
         neutered: !!data.neutered,
         origin_id: data.origin_id || "unknown",
         acquired_at: toDateInput(data.acquired_at),
-        photo: null, // solo se usa cuando subes una nueva
+        current_weight: data.current_weight?.toString() || "",
+        photo: null,
       });
     }
 
@@ -112,46 +111,127 @@ export default function PetForm({ mode = "create" }) {
     return () => { abort = true; };
   }, [isEdit, id]);
 
+  // Validación de microchip
+  const validateMicrochip = (value) => {
+    if (!value || value.trim() === "") {
+      setMicrochipError("");
+      return true;
+    }
+
+    const cleaned = value.trim();
+
+    if (!/^\d+$/.test(cleaned)) {
+      setMicrochipError("El microchip solo debe contener números");
+      return false;
+    }
+
+    if (cleaned.length > 15) {
+      setMicrochipError("El microchip no puede tener más de 15 dígitos");
+      return false;
+    }
+
+    if (cleaned.length < 9) {
+      setMicrochipError("El microchip debe tener al menos 9 dígitos");
+      return false;
+    }
+
+    setMicrochipError("");
+    return true;
+  };
+
+  // Validación de peso
+  const validateWeight = (value) => {
+    if (!value || value.trim() === "") {
+      setWeightError("");
+      return true;
+    }
+
+    const weight = parseFloat(value);
+
+    if (isNaN(weight)) {
+      setWeightError("El peso debe ser un número válido");
+      return false;
+    }
+
+    if (weight <= 0) {
+      setWeightError("El peso debe ser mayor a 0");
+      return false;
+    }
+
+    if (weight > 500) {
+      setWeightError("El peso no puede ser mayor a 500 kg");
+      return false;
+    }
+
+    setWeightError("");
+    return true;
+  };
+
   const onChange = (e) => {
     const { name, value, type, checked, files } = e.target;
-    if (files) setForm((f) => ({ ...f, [name]: files[0] }));
-    else if (type === "checkbox") setForm((f) => ({ ...f, [name]: checked }));
-    else setForm((f) => ({ ...f, [name]: value }));
+    
+    if (files) {
+      setForm((f) => ({ ...f, [name]: files[0] }));
+    } else if (type === "checkbox") {
+      setForm((f) => ({ ...f, [name]: checked }));
+    } else {
+      setForm((f) => ({ ...f, [name]: value }));
+      
+      // Validar en tiempo real
+      if (name === "microchip") {
+        validateMicrochip(value);
+      } else if (name === "current_weight") {
+        validateWeight(value);
+      }
+    }
   };
 
   const onSubmit = async (e) => {
     e.preventDefault();
     if (!user) return;
 
+    // Validaciones
+    if (!form.name.trim()) {
+      setErr("El nombre es obligatorio");
+      return;
+    }
+
+    if (form.microchip && !validateMicrochip(form.microchip)) {
+      setErr("Por favor corrige el número de microchip");
+      return;
+    }
+
+    if (form.current_weight && !validateWeight(form.current_weight)) {
+      setErr("Por favor corrige el peso");
+      return;
+    }
+
     setSaving(true);
     setErr("");
 
     try {
-      // Garantiza perfil (útil por RLS)
       await upsertAppUserFromAuthUser(user);
 
-      // Sube foto si hay archivo nuevo
       let image_url = currentImageUrl || null;
       if (form.photo) {
         image_url = await uploadPetPhoto(user.id, form.photo);
       }
 
-      // payload común
       const values = {
         name: form.name.trim(),
         species_id: form.species_id,
         breed: form.breed || null,
         sex_id: form.sex_id,
         birth_date: form.birth_date || null,
-        microchip: form.microchip || null,
+        microchip: form.microchip.trim() || null,
         neutered: !!form.neutered,
         origin_id: form.origin_id,
         acquired_at: form.acquired_at || null,
+        current_weight: form.current_weight ? parseFloat(form.current_weight) : null,
         image_url,
       };
 
       if (isEdit) {
-        // UPDATE
         const { error } = await supabase
           .schema("petcare")
           .from("pet")
@@ -161,9 +241,7 @@ export default function PetForm({ mode = "create" }) {
 
         navigate(`/app/pets/${id}`, { replace: true });
       } else {
-        // CREATE (incluye user_id)
         const { pet_id: newId } = await createPet(user.id, values);
-        // si tu createPet no retorna el id, puedes hacer un select("*") .single()
         navigate(`/app/pets/${newId}`, { replace: true });
       }
     } catch (e2) {
@@ -191,6 +269,7 @@ export default function PetForm({ mode = "create" }) {
             value={form.name}
             onChange={onChange}
             className="w-full rounded-xl border px-3 py-2"
+            placeholder="Nombre de tu mascota"
           />
         </Field>
 
@@ -215,6 +294,7 @@ export default function PetForm({ mode = "create" }) {
             value={form.breed}
             onChange={onChange}
             className="w-full rounded-xl border px-3 py-2"
+            placeholder="Ej: Labrador, Persa, etc."
           />
         </Field>
 
@@ -240,25 +320,60 @@ export default function PetForm({ mode = "create" }) {
             value={form.birth_date}
             onChange={onChange}
             className="w-full rounded-xl border px-3 py-2"
+            max={new Date().toISOString().split('T')[0]}
           />
         </Field>
 
-        <Field label="Microchip">
+        <Field 
+          label="Peso (kg)" 
+          error={weightError}
+          helpText="Debe ser mayor a 0"
+        >
+          <input
+            type="number"
+            name="current_weight"
+            value={form.current_weight}
+            onChange={onChange}
+            className={`w-full rounded-xl border px-3 py-2 ${
+              weightError ? 'border-red-500 focus:ring-red-500' : ''
+            }`}
+            placeholder="Ej: 25.5"
+            step="0.1"
+            min="0.1"
+            max="500"
+          />
+        </Field>
+
+        <Field 
+          label="Microchip" 
+          error={microchipError}
+          helpText="9-15 dígitos numéricos"
+        >
           <input
             name="microchip"
             value={form.microchip}
             onChange={onChange}
-            className="w-full rounded-xl border px-3 py-2"
+            className={`w-full rounded-xl border px-3 py-2 ${
+              microchipError ? 'border-red-500 focus:ring-red-500' : ''
+            }`}
+            placeholder="Ej: 982000123456789"
+            maxLength={15}
+            pattern="\d*"
+            inputMode="numeric"
           />
         </Field>
 
         <Field label="Esterilizado/a">
-          <input
-            type="checkbox"
-            name="neutered"
-            checked={form.neutered}
-            onChange={onChange}
-          />
+          <label className="flex items-center gap-2 cursor-pointer">
+            <input
+              type="checkbox"
+              name="neutered"
+              checked={form.neutered}
+              onChange={onChange}
+              className="w-5 h-5 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
+            />
+            <span className="text-sm">Sí</span>
+          </label>
         </Field>
 
         <Field label="Origen">
@@ -283,10 +398,11 @@ export default function PetForm({ mode = "create" }) {
             value={form.acquired_at}
             onChange={onChange}
             className="w-full rounded-xl border px-3 py-2"
+            max={new Date().toISOString().split('T')[0]}
           />
         </Field>
 
-        <Field label="Foto">
+        <Field label="Foto" className="sm:col-span-2">
           <input
             type="file"
             name="photo"
@@ -302,19 +418,23 @@ export default function PetForm({ mode = "create" }) {
         </Field>
       </div>
 
-      {err && <p className="text-sm text-red-600">{err}</p>}
+      {err && (
+        <div className="p-3 bg-red-50 border border-red-200 rounded-xl">
+          <p className="text-sm text-red-600">{err}</p>
+        </div>
+      )}
 
-      <div className="flex justify-end gap-2">
+      <div className="flex justify-end gap-2 pt-4">
         <button
           type="button"
-          onClick={() => history.back()}
+          onClick={() => navigate(-1)}
           className="rounded-xl border px-4 py-2 text-sm hover:bg-gray-50"
         >
           Cancelar
         </button>
         <button
-          disabled={saving}
-          className="rounded-xl bg-black px-4 py-2 text-sm text-white hover:opacity-90 disabled:opacity-50"
+          disabled={saving || !!microchipError || !!weightError}
+          className="rounded-xl bg-black px-4 py-2 text-sm text-white hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed"
         >
           {saving ? "Guardando..." : "Guardar"}
         </button>
@@ -323,13 +443,19 @@ export default function PetForm({ mode = "create" }) {
   );
 }
 
-function Field({ label, required, children }) {
+function Field({ label, required, error, helpText, className, children }) {
   return (
-    <label className="space-y-1">
+    <label className={`space-y-1 ${className || ''}`}>
       <span className="block text-sm text-gray-600">
         {label} {required && <span className="text-red-500">*</span>}
       </span>
       {children}
+      {helpText && !error && (
+        <p className="text-xs text-gray-500 mt-1">{helpText}</p>
+      )}
+      {error && (
+        <p className="text-xs text-red-600 mt-1">{error}</p>
+      )}
     </label>
   );
 }
