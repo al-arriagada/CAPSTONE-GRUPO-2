@@ -8,13 +8,11 @@ export default function Navbar() {
   const [open, setOpen] = useState(false);
   const navigate = useNavigate();
   const { user, signOut, loading } = useAuth(); 
-  const { displayName, loading: loadingProfile } = useProfile(user);
+  const { displayName, loading: loadingProfile, avatarUrl } = useProfile(user);
 
   const handleLogout = async () => {
-    // 1) sal de la zona privada
-    navigate("/", { replace: true });   // ⬅️ primero a Home pública
+    navigate("/", { replace: true });
     try {
-      // 2) luego cierra sesión
       await signOut();
     } catch (e) {
       console.error(e);
@@ -24,7 +22,6 @@ export default function Navbar() {
   return (
     <nav className="sticky top-0 z-50 border-b bg-white/80 backdrop-blur">
       <div className="mx-auto flex h-14 max-w-7xl items-center justify-between px-4 sm:px-6 lg:px-8">
-        {/* Left: logo */}
         <div className="flex items-center gap-2">
           <Link to="/" className="flex items-center gap-2">
             <span className="text-xl">🐾</span>
@@ -32,58 +29,35 @@ export default function Navbar() {
           </Link>
         </div>
 
-        {/* Center: links (ocultos en mobile) */}
         <div className="hidden items-center gap-4 md:flex">
-            
-            {user && <NavItem to="/app">Dashboard</NavItem>}   {/* ⬅️ solo con sesión */}
-          {/* agrega más si quieres */}
+          {user && <NavItem to="/app">Dashboard</NavItem>}
         </div>
 
-        {/* Right: auth actions */}
         <div className="hidden items-center gap-2 md:flex">
-          {/* Mientras carga el contexto, evita parpadeo */}
           {loading ? (
             <div className="h-8 w-24 animate-pulse rounded-md bg-gray-200" />
           ) : user ? (
               <UserMenu
                 user={user}
                 name={displayName}
+                avatarUrl={avatarUrl}
                 loadingName={loadingProfile}
                 onLogout={handleLogout}
               />
           ) : (
             <>
-              <Link
-                to="/signin"
-                className="rounded-xl border px-3 py-1.5 text-sm hover:bg-gray-50"
-              >
-                Iniciar sesión
-              </Link>
-              <Link
-                to="/signup"
-                className="rounded-xl bg-black px-3 py-1.5 text-sm text-white hover:opacity-90"
-              >
-                Registrarse
-              </Link>
+              <Link to="/signin" className="rounded-xl border px-3 py-1.5 text-sm hover:bg-gray-50">Iniciar sesión</Link>
+              <Link to="/signup" className="rounded-xl bg-black px-3 py-1.5 text-sm text-white hover:opacity-90">Registrarse</Link>
             </>
           )}
         </div>
 
-        {/* Mobile toggle */}
-        <button
-          className="inline-flex items-center rounded-xl border px-2 py-1 md:hidden"
-          onClick={() => setOpen((v) => !v)}
-          aria-label="Abrir menú"
-        >
-          ☰
-        </button>
+        <button onClick={() => setOpen((v) => !v)} className="inline-flex items-center rounded-xl border px-2 py-1 md:hidden" aria-label="Abrir menú">☰</button>
       </div>
 
-      {/* Mobile menu */}
       {open && (
         <div className="border-t bg-white md:hidden">
           <div className="mx-auto flex max-w-7xl flex-col gap-2 px-4 py-3">
-
             <div className="h-px bg-gray-200 my-2" />
 
             {loading ? (
@@ -91,7 +65,7 @@ export default function Navbar() {
             ) : user ? (
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-3">
-                  <Avatar fallback={user?.email} />
+                  <Avatar fallback={user?.email} avatarUrl={avatarUrl} />
                   <div className="text-sm">
                     <div className="font-medium leading-tight">
                       {loadingProfile ? "Cargando..." : (displayName || user?.email)}
@@ -99,29 +73,12 @@ export default function Navbar() {
                     <div className="text-gray-500">Sesión activa</div>
                   </div>
                 </div>
-                <button
-                  onClick={() => { setOpen(false); handleLogout(); }}
-                  className="rounded-xl border px-3 py-1.5 text-sm hover:bg-gray-50"
-                >
-                  Cerrar sesión
-                </button>
+                <button onClick={() => { setOpen(false); handleLogout(); }} className="rounded-xl border px-3 py-1.5 text-sm hover:bg-gray-50">Cerrar sesión</button>
               </div>
             ) : (
               <div className="flex gap-2">
-                <Link
-                  to="/signin"
-                  onClick={() => setOpen(false)}
-                  className="flex-1 rounded-xl border px-3 py-1.5 text-center text-sm hover:bg-gray-50"
-                >
-                  Iniciar sesión
-                </Link>
-                <Link
-                  to="/signup"
-                  onClick={() => setOpen(false)}
-                  className="flex-1 rounded-xl bg-black px-3 py-1.5 text-center text-sm text-white hover:opacity-90"
-                >
-                  Registrarse
-                </Link>
+                <Link to="/signin" onClick={() => setOpen(false)} className="flex-1 rounded-xl border px-3 py-1.5 text-center text-sm hover:bg-gray-50">Iniciar sesión</Link>
+                <Link to="/signup" onClick={() => setOpen(false)} className="flex-1 rounded-xl bg-black px-3 py-1.5 text-center text-sm text-white hover:opacity-90">Registrarse</Link>
               </div>
             )}
           </div>
@@ -131,52 +88,43 @@ export default function Navbar() {
   );
 }
 
-/* ---------- subcomponentes ---------- */
-
 function NavItem({ to, end, children, onClick }) {
   return (
     <NavLink
       to={to}
       end={end}
       onClick={onClick}
-      className={({ isActive }) =>
-        [
-          "rounded-xl px-3 py-1.5 text-sm",
-          isActive ? "bg-black text-white" : "hover:bg-gray-50",
-        ].join(" ")
-      }
+      className={({ isActive }) => [
+        "rounded-xl px-3 py-1.5 text-sm",
+        isActive ? "bg-black text-white" : "hover:bg-gray-50",
+      ].join(" ")}
     >
       {children}
     </NavLink>
   );
 }
 
-function UserMenu({ user, name, loadingName, onLogout }) {
+function UserMenu({ user, name, loadingName, avatarUrl, onLogout }) {
   return (
     <div className="flex items-center gap-3">
-      <Avatar fallback={user?.email} />
+      <Avatar fallback={user?.email} avatarUrl={avatarUrl} />
       <span className="hidden text-sm text-gray-700 sm:inline">
-        Bienvenido,{" "}
-        <strong>{loadingName ? "..." : (name || user?.email?.split("@")[0])}</strong>
+        Bienvenido, <strong>{loadingName ? "..." : (name || user?.email?.split("@")[0])}</strong>
       </span>
-      <button
-        onClick={onLogout}
-        className="rounded-xl border px-3 py-1.5 text-sm hover:bg-gray-50"
-      >
-        Cerrar sesión
-      </button>
+      <button onClick={onLogout} className="rounded-xl border px-3 py-1.5 text-sm hover:bg-gray-50">Cerrar sesión</button>
     </div>
   );
 }
 
-function Avatar({ fallback }) {
+function Avatar({ fallback, avatarUrl }) {
   const letter = (fallback || "?").toString().charAt(0).toUpperCase();
   return (
-    <Link
-      to="/app/profile"
-      className="flex h-8 w-8 items-center justify-center rounded-full bg-gray-900 text-sm font-semibold text-white hover:scale-105 transition"
-    >
-      {letter}
+    <Link to="/app/profile" className="flex h-8 w-8 items-center justify-center rounded-full bg-gray-900 text-sm font-semibold text-white hover:scale-105 transition overflow-hidden">
+      {avatarUrl ? (
+        <img src={avatarUrl} alt="avatar" className="h-full w-full object-cover" />
+      ) : (
+        letter
+      )}
     </Link>
   );
 }
