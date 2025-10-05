@@ -1,6 +1,3 @@
-import Navbar from "./Navbar.jsx";
-import { Link } from "react-router-dom";
-// src/components/OwnerProfile.jsx
 import { useEffect, useState } from "react";
 import { supabase } from "../supabaseClient";
 import { useAuth } from "../context/AuthContext";
@@ -10,7 +7,6 @@ import {
   FaEnvelope,
   FaIdCard,
   FaCalendar,
-  FaMapMarkerAlt,
   FaEdit,
   FaSave,
 } from "react-icons/fa";
@@ -21,7 +17,6 @@ export default function OwnerProfile() {
   const [profile, setProfile] = useState(null);
   const [editMode, setEditMode] = useState(false);
   const [formData, setFormData] = useState({});
-  const [comunas, setComunas] = useState([]);
   const [message, setMessage] = useState("");
 
   useEffect(() => {
@@ -49,9 +44,6 @@ export default function OwnerProfile() {
           phone: userPii?.phone ?? "",
           birth_date: appUser?.birth_date ?? "",
           gender: appUser?.gender ?? "",
-          comuna_id: appUser?.comuna_id ?? null,
-          comuna_name: appUser?.comuna_name ?? "",
-          region_name: appUser?.region_name ?? "",
         };
 
         setProfile(data);
@@ -63,21 +55,12 @@ export default function OwnerProfile() {
       }
     };
 
-    const fetchComunas = async () => {
-      const { data } = await supabase
-        .from("comuna_view")
-        .select("comuna_id, name, region_name")
-        .order("name", { ascending: true });
-
-      setComunas(data || []);
-    };
-
     fetchProfile();
-    fetchComunas();
   }, [user]);
 
   const handleChange = (e) => {
-    setFormData({ ...formData, [e.target.name]: e.target.value });
+    const { name, value } = e.target;
+    setFormData((prev) => ({ ...prev, [name]: value }));
   };
 
   const handleSave = async () => {
@@ -89,9 +72,8 @@ export default function OwnerProfile() {
           full_name: formData.full_name,
           rut: formData.rut,
           email: formData.email,
-          birth_date: formData.birth_date,
+          birth_date: formData.birth_date || null,
           gender: formData.gender,
-          comuna_id: formData.comuna_id,
         })
         .eq("user_id", user.id);
 
@@ -136,8 +118,6 @@ export default function OwnerProfile() {
     return Math.abs(ageDate.getUTCFullYear() - 1970);
   };
 
-  const selectedComuna = comunas.find((c) => c.comuna_id === Number(formData.comuna_id));
-
   if (loading) return <p className="text-center mt-10">Cargando perfil...</p>;
   if (!profile) return <p className="text-center mt-10">Perfil no encontrado.</p>;
 
@@ -174,17 +154,34 @@ export default function OwnerProfile() {
       <div className="bg-white rounded-lg shadow p-6 mb-6">
         <h3 className="text-lg font-semibold mb-4">Información de Contacto</h3>
         <div className="grid sm:grid-cols-2 gap-4 text-gray-700">
-          <div><FaEnvelope className="inline mr-2" />
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">
+              <FaUser className="inline mr-2" />Nombre Completo
+            </label>
+            {editMode ? (
+              <input name="full_name" value={formData.full_name} onChange={handleChange} className="border rounded px-2 py-1 w-full" />
+            ) : (profile.full_name || "-")}
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">
+              <FaEnvelope className="inline mr-2" />Correo Electrónico
+            </label>
             {editMode ? (
               <input name="email" value={formData.email} onChange={handleChange} className="border rounded px-2 py-1 w-full" />
             ) : (profile.email || "-")}
           </div>
-          <div><FaPhone className="inline mr-2" />
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">
+              <FaPhone className="inline mr-2" />Teléfono
+            </label>
             {editMode ? (
               <input name="phone" value={formData.phone} onChange={handleChange} className="border rounded px-2 py-1 w-full" />
             ) : (profile.phone || "-")}
           </div>
-          <div><FaIdCard className="inline mr-2" />
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">
+              <FaIdCard className="inline mr-2" />RUT
+            </label>
             {editMode ? (
               <input name="rut" value={formData.rut} onChange={handleChange} className="border rounded px-2 py-1 w-full" />
             ) : (profile.rut || "-")}
@@ -195,12 +192,18 @@ export default function OwnerProfile() {
       <div className="bg-white rounded-lg shadow p-6 mb-6">
         <h3 className="text-lg font-semibold mb-4">Información Personal</h3>
         <div className="grid sm:grid-cols-2 gap-4 text-gray-700">
-          <div><FaCalendar className="inline mr-2" />
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">
+              <FaCalendar className="inline mr-2" />Fecha de Nacimiento
+            </label>
             {editMode ? (
               <input type="date" name="birth_date" value={formData.birth_date} onChange={handleChange} className="border rounded px-2 py-1 w-full" />
             ) : formatDate(profile.birth_date)}
           </div>
-          <div><FaUser className="inline mr-2" />
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">
+              <FaUser className="inline mr-2" />Género
+            </label>
             {editMode ? (
               <select name="gender" value={formData.gender} onChange={handleChange} className="border rounded px-2 py-1 w-full">
                 <option value="">Seleccionar</option>
@@ -212,26 +215,6 @@ export default function OwnerProfile() {
           </div>
         </div>
       </div>
-
-      <div className="bg-white rounded-lg shadow p-6">
-        <h3 className="text-lg font-semibold mb-4">Ubicación</h3>
-        <div className="text-gray-700">
-          <FaMapMarkerAlt className="inline mr-2" />
-          {editMode ? (
-            <select name="comuna_id" value={formData.comuna_id || ""} onChange={handleChange} className="border rounded px-2 py-1 w-full">
-              <option value="">Seleccionar comuna</option>
-              {comunas.map((comuna) => (
-                <option key={comuna.comuna_id} value={comuna.comuna_id}>
-                  {comuna.name} ({comuna.region_name})
-                </option>
-              ))}
-            </select>
-          ) : (
-            `${profile.comuna_name || "-"}, ${profile.region_name || "-"}`
-          )}
-        </div>
-      </div>
     </div>
   );
 }
-
