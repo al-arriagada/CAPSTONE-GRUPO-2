@@ -339,7 +339,7 @@ export default function Signup() {
             {/* nombre usuario */}
             <div>
               <label className="block text-sm font-semibold text-gray-700">
-                Nombre de usuario *
+                Nombre completo *
               </label>
               <input
                 type="text"
