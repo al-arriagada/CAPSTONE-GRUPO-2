@@ -468,7 +468,6 @@ export default function Signup() {
                 type="tel"
                 inputMode="numeric"
                 autoComplete="tel"
-                pattern="[0-9]*"
                 className="w-full px-4 py-3 mt-1 text-gray-900 border border-gray-300 rounded-xl shadow-sm focus:ring-2 focus:ring-pink-500 focus:border-pink-500 transition"
                 placeholder="+56 9 1234 5678"
                 value={formatClMobileDisplay(phoneLocal)}
