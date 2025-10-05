@@ -583,17 +583,40 @@ export default function PetDetail() {
                   </label>
                 </div>
 
-                <div className="sm:col-span-2">
-                  <EditField label="URL de imagen">
-                    <input
-                      type="url"
-                      value={formData.image_url}
-                      onChange={(e) => setFormData({...formData, image_url: e.target.value})}
-                      className="w-full px-4 py-2 border rounded-xl"
-                      placeholder="https://..."
-                    />
-                  </EditField>
-                </div>
+            <div className="sm:col-span-2">
+              <EditField label="Subir otra imagen">
+                <input
+                  type="file"
+                  accept="image/*"
+                  onChange={async (e) => {
+                    const file = e.target.files[0];
+                    if (!file) return;
+
+                    // Guardar dentro de la carpeta user_id en el bucket pets
+                    const fileName = `${user.id}/${file.name}`;
+
+                    // Subir al bucket "pets"
+                    const { error: uploadError } = await supabase.storage
+                      .from("pets")
+                      .upload(fileName, file, { cacheControl: "3600", upsert: true });
+
+                    if (uploadError) {
+                      console.error("Error subiendo imagen:", uploadError.message);
+                      return;
+                    }
+
+                    // Obtener URL pública
+                    const { data: publicData } = supabase.storage.from("pets").getPublicUrl(fileName);
+
+                    // Actualizar formData con la nueva URL
+                    setFormData({ ...formData, image_url: publicData.publicUrl });
+                  }}
+                  className="w-full px-4 py-2 border rounded-xl"
+                />
+              </EditField>
+            </div>
+
+                
               </div>
             </div>
           </div>
