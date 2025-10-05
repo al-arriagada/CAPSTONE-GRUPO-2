@@ -24,7 +24,7 @@ export default function Signup() {
 
   // ==== Perfil extra
   const [gender, setGender] = useState("other");
-  const [phone, setPhone] = useState("");
+  const [phoneLocal, setPhoneLocal] = useState("");
   const [address, setAddress] = useState("");
 
   // ==== Región/Comuna (cascada)
@@ -52,6 +52,31 @@ export default function Signup() {
   const [loading, setLoading] = useState(false);
 
   // ========= Helpers que ya tenías =========
+
+  const formatClMobileDisplay = (local8) => {
+  const d = (local8 || "").replace(/\D/g, "").slice(0, 8);
+  const a = d.slice(0, 4);
+  const b = d.slice(4, 8);
+  if (!d) return "";                 // input vacío
+  if (d.length <= 4) return `+56 9 ${a}`;
+  return `+56 9 ${a} ${b}`;
+};
+
+  const normalizeClMobileFromAny = (value) => {
+    // Acepta pegados: "+56 9 1234 5678", "56912345678", "912345678", "12345678"
+    const only = (value || "").replace(/\D/g, "");
+    let local = only;
+    if (only.startsWith("569")) local = only.slice(3);
+    else if (only.startsWith("56")) local = only.slice(2);
+    if (local.startsWith("9")) local = local.slice(1);
+    return local.slice(0, 8); // 8 dígitos locales
+  };
+
+  const toE164ClMobile = (local8) => {
+    const d = (local8 || "").replace(/\D/g, "");
+    return d.length === 8 ? `+569${d}` : null;
+  };
+
 
   // formatea RUT
   const formatRut = (value) => {
@@ -239,7 +264,7 @@ export default function Signup() {
             rut,                          // opcional en auth; útil para tu ensureProfile
             gender,
             birth_date: birthDateISO,     // YYYY-MM-DD
-            phone: phone || null,
+            phone: toE164ClMobile(phoneLocal) || null,
             address_line: address || null,
             region_id: regionId ? Number(regionId) : null,
             comuna_id: comunaId ? Number(comunaId) : null,
@@ -440,11 +465,31 @@ export default function Signup() {
                 Teléfono
               </label>
               <input
+                type="tel"
+                inputMode="numeric"
+                autoComplete="tel"
+                pattern="[0-9]*"
                 className="w-full px-4 py-3 mt-1 text-gray-900 border border-gray-300 rounded-xl shadow-sm focus:ring-2 focus:ring-pink-500 focus:border-pink-500 transition"
                 placeholder="+56 9 1234 5678"
-                value={phone}
-                onChange={(e) => setPhone(e.target.value)}
+                value={formatClMobileDisplay(phoneLocal)}
+                onChange={(e) => {
+                  // Limpia y trae a 8 dígitos locales sin símbolos
+                  const local8 = normalizeClMobileFromAny(e.target.value);
+                  setPhoneLocal(local8);
+                }}
+                onKeyDown={(e) => {
+                  // Permite navegación/edición
+                  const ctl = ["Backspace","Delete","ArrowLeft","ArrowRight","Tab","Home","End"];
+                  if (ctl.includes(e.key)) return;
+                  // Solo dígitos
+                  if (!/^[0-9]$/.test(e.key)) e.preventDefault();
+                }}
               />
+              {phoneLocal && phoneLocal.length !== 8 && (
+                <p className="text-xs text-red-600 mt-1">
+                  Ingresa los 8 dígitos del número (sin considerar +56 9).
+                </p>
+              )}
             </div>
 
             {/* dirección */}
