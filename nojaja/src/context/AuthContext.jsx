@@ -1,13 +1,16 @@
 // src/context/AuthContext.jsx
-import React, { createContext, useContext, useEffect, useState } from "react";
+import React, { createContext, useContext, useEffect, useRef, useState } from "react";
 import { supabase } from "../supabaseClient";
-import { upsertAppUserFromAuthUser } from "../services/profile";
+import { ensureProfileOnAuth } from "../services/profile"; // ⬅️ usa el helper idempotente
 
 const AuthContext = createContext(null);
 
 export const AuthProvider = ({ children }) => {
-  const [user, setUser]   = useState(null);
+  const [user, setUser]     = useState(null);
   const [loading, setLoading] = useState(true);
+
+  // Evita ejecutar ensureProfile varias veces para el mismo user.id
+  const lastEnsuredRef = useRef(null);
 
   useEffect(() => {
     let ignore = false;
@@ -16,42 +19,72 @@ export const AuthProvider = ({ children }) => {
       const { data: { session }, error } = await supabase.auth.getSession();
       if (error) {
         console.error("getSession:", error);
-        if (!ignore) { setUser(null); setLoading(false); }
+        if (!ignore) {
+          setUser(null);
+          setLoading(false);
+        }
         return;
       }
 
       const u = session?.user ?? null;
-      if (!ignore) { setUser(u); setLoading(false); }
+      if (!ignore) {
+        setUser(u);
+      }
 
-      // Si ya había sesión (p.ej. recarga), copia a app_user
-      if (u) upsertAppUserFromAuthUser(u).catch(console.error);
+      // Asegura perfil en la carga inicial si hay usuario
+      if (u && lastEnsuredRef.current !== u.id) {
+        lastEnsuredRef.current = u.id;
+        ensureProfileOnAuth(u).catch((e) =>
+          console.warn("ensureProfileOnAuth(init):", e?.message || e)
+        );
+      }
+
+      if (!ignore) setLoading(false);
     };
 
     init();
 
-    const { data: { subscription } } =
-      supabase.auth.onAuthStateChange(async (event, session) => {
+    // Suscripción a cambios de autenticación
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(
+      async (event, session) => {
         const u = session?.user ?? null;
         setUser(u);
 
-        if (u && (event === "SIGNED_IN" || event === "USER_UPDATED")) {
-          // Primer login después de confirmar: copiamos a app_user aquí
-          upsertAppUserFromAuthUser(u).catch(console.error);
-        }
-      });
+        // Asegura perfil en eventos relevantes
+        const shouldEnsure =
+          u &&
+          (event === "SIGNED_IN" || event === "TOKEN_REFRESHED" || event === "USER_UPDATED");
 
-    return () => subscription?.unsubscribe?.();
+        if (shouldEnsure && lastEnsuredRef.current !== u.id) {
+          lastEnsuredRef.current = u.id;
+          ensureProfileOnAuth(u).catch((e) =>
+            console.warn("ensureProfileOnAuth(event):", e?.message || e)
+          );
+        }
+
+        // Al cerrar sesión, resetea el guard
+        if (!u) lastEnsuredRef.current = null;
+      }
+    );
+
+    return () => {
+      ignore = true;
+      subscription?.unsubscribe?.();
+    };
   }, []);
 
   const signOut = async () => {
     const { error } = await supabase.auth.signOut();
     if (error) throw error;
     setUser(null);
+    lastEnsuredRef.current = null;
   };
 
   return (
     <AuthContext.Provider value={{ user, loading, signOut }}>
-      {!loading ? children : (
+      {!loading ? (
+        children
+      ) : (
         <div className="min-h-screen flex items-center justify-center">Cargando...</div>
       )}
     </AuthContext.Provider>
