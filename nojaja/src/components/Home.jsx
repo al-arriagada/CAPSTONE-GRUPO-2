@@ -89,8 +89,8 @@ export default function Home() {
         {tab === "citas" && (
           <EmptyState
             title="No hay citas para mostrar"
-            actionLabel="Agendar Cita"
-            onAction={() => alert("Agendar Cita")}
+            actionLabel="Agregar Cita"
+            onAction={() => alert("Agregar Cita")}
           />
         )}
 

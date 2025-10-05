@@ -1,3 +1,4 @@
+// src/components/PetDetail.jsx
 import { useEffect, useState } from "react";
 import { useParams, useNavigate, Link } from "react-router-dom";
 import { supabase } from "../supabaseClient";
@@ -12,11 +13,11 @@ export default function PetDetail() {
   const [owner, setOwner] = useState(null);
   const [loading, setLoading] = useState(true);
   const [deleting, setDeleting] = useState(false);
-  const [activeTab, setActiveTab] = useState('id');
+  const [activeTab, setActiveTab] = useState("id");
   const [isEditing, setIsEditing] = useState(false);
   const [saving, setSaving] = useState(false);
-  const [error, setError] = useState('');
-  const [success, setSuccess] = useState('');
+  const [error, setError] = useState("");
+  const [success, setSuccess] = useState("");
 
   // Catálogos dinámicos
   const [species, setSpecies] = useState([]);
@@ -25,10 +26,48 @@ export default function PetDetail() {
   const [statuses, setStatuses] = useState([]);
 
   const [formData, setFormData] = useState({
-    name: '', species_id: '', breed: '', sex_id: '', birth_date: '',
-    image_url: '', microchip: '', neutered: false, origin_id: '',
-    acquired_at: '', status_id: '', current_weight: ''
+    name: "",
+    species_id: "",
+    breed: "",
+    sex_id: "",
+    birth_date: "",
+    image_url: "",
+    microchip: "",
+    neutered: false,
+    origin_id: "",
+    acquired_at: "",
+    status_id: "",
+    current_weight: "",
   });
+
+  // ========================
+  // Helpers nuevos (DUEÑO)
+  // ========================
+  async function fetchOwnerContact(userId) {
+    // 1) app_user: nombre + email
+    const { data: base, error: e1 } = await supabase
+      .schema("petcare")
+      .from("app_user")
+      .select("user_id, email, full_name")
+      .eq("user_id", userId)
+      .maybeSingle();
+    if (e1) throw e1;
+
+    // 2) user_pii: teléfono + dirección (puede no existir fila)
+    const { data: pii, error: e2 } = await supabase
+      .schema("petcare")
+      .from("user_pii")
+      .select("phone, address_line")
+      .eq("user_id", userId)
+      .maybeSingle();
+    if (e2) throw e2;
+
+    return {
+      ...base,
+      phone: pii?.phone ?? null,
+      address_line: pii?.address_line ?? null,
+    };
+  }
 
   // Cargar catálogos al iniciar
   useEffect(() => {
@@ -55,6 +94,9 @@ export default function PetDetail() {
 
   const loadPet = async () => {
     setLoading(true);
+    setError("");
+
+    // PET
     const { data, error } = await supabase
       .schema("petcare")
       .from("pet")
@@ -64,6 +106,7 @@ export default function PetDetail() {
 
     if (error) {
       console.error(error);
+      setError(error.message);
       setLoading(false);
       return;
     }
@@ -71,29 +114,28 @@ export default function PetDetail() {
     if (data) {
       setPet(data);
       setFormData({
-        name: data.name || '',
-        species_id: data.species_id || '',
-        breed: data.breed || '',
-        sex_id: data.sex_id || '',
-        birth_date: data.birth_date || '',
-        image_url: data.image_url || '',
-        microchip: data.microchip || '',
+        name: data.name || "",
+        species_id: data.species_id || "",
+        breed: data.breed || "",
+        sex_id: data.sex_id || "",
+        birth_date: data.birth_date || "",
+        image_url: data.image_url || "",
+        microchip: data.microchip || "",
         neutered: data.neutered || false,
-        origin_id: data.origin_id || '',
-        acquired_at: data.acquired_at || '',
-        status_id: data.status_id || '',
-        current_weight: data.current_weight?.toString() || ''
+        origin_id: data.origin_id || "",
+        acquired_at: data.acquired_at || "",
+        status_id: data.status_id || "",
+        current_weight: data.current_weight?.toString() || "",
       });
 
-      // Cargar datos del dueño
-      const { data: userData } = await supabase
-        .schema("petcare")
-        .from("user")
-        .select("user_id, name, email, phone, address")
-        .eq("user_id", data.user_id)
-        .maybeSingle();
-      
-      if (userData) setOwner(userData);
+      // OWNER (FIX: antes llamaba a petcare.user → 404)
+      try {
+        const o = await fetchOwnerContact(data.user_id);
+        setOwner(o);
+      } catch (e) {
+        // Si no hay PII no es error fatal
+        console.warn("No fue posible cargar owner/PII:", e?.message);
+      }
     }
     setLoading(false);
   };
@@ -104,25 +146,28 @@ export default function PetDetail() {
     const birth = new Date(birthDate);
     let years = today.getFullYear() - birth.getFullYear();
     let months = today.getMonth() - birth.getMonth();
-    
+
     if (months < 0) {
       years--;
       months += 12;
     }
-    
-    if (years === 0) return `${months} ${months === 1 ? 'mes' : 'meses'}`;
-    return `${years} ${years === 1 ? 'año' : 'años'}${months > 0 ? ` y ${months} ${months === 1 ? 'mes' : 'meses'}` : ''}`;
+
+    if (years === 0)
+      return `${months} ${months === 1 ? "mes" : "meses"}`;
+    return `${years} ${years === 1 ? "año" : "años"}${
+      months > 0 ? ` y ${months} ${months === 1 ? "mes" : "meses"}` : ""
+    }`;
   };
 
   const handleSave = async () => {
     if (!formData.name.trim()) {
-      setError('El nombre es requerido');
+      setError("El nombre es requerido");
       return;
     }
 
     setSaving(true);
-    setError('');
-    setSuccess('');
+    setError("");
+    setSuccess("");
 
     const updateData = { name: formData.name.trim(), neutered: formData.neutered };
 
@@ -135,7 +180,8 @@ export default function PetDetail() {
     if (formData.origin_id) updateData.origin_id = formData.origin_id;
     if (formData.acquired_at) updateData.acquired_at = formData.acquired_at;
     if (formData.status_id) updateData.status_id = formData.status_id;
-    if (formData.current_weight && formData.current_weight !== '') updateData.current_weight = parseFloat(formData.current_weight);
+    if (formData.current_weight && formData.current_weight !== "")
+      updateData.current_weight = parseFloat(formData.current_weight);
 
     const { error: updateError } = await supabase
       .schema("petcare")
@@ -150,34 +196,34 @@ export default function PetDetail() {
       return;
     }
 
-    setSuccess('Perfil actualizado exitosamente');
+    setSuccess("Perfil actualizado exitosamente");
     await loadPet();
-    
+
     setTimeout(() => {
       setIsEditing(false);
-      setSuccess('');
+      setSuccess("");
     }, 1500);
   };
 
   const handleCancel = () => {
     if (pet) {
       setFormData({
-        name: pet.name || '',
-        species_id: pet.species_id || '',
-        breed: pet.breed || '',
-        sex_id: pet.sex_id || '',
-        birth_date: pet.birth_date || '',
-        image_url: pet.image_url || '',
-        microchip: pet.microchip || '',
+        name: pet.name || "",
+        species_id: pet.species_id || "",
+        breed: pet.breed || "",
+        sex_id: pet.sex_id || "",
+        birth_date: pet.birth_date || "",
+        image_url: pet.image_url || "",
+        microchip: pet.microchip || "",
         neutered: pet.neutered || false,
-        origin_id: pet.origin_id || '',
-        acquired_at: pet.acquired_at || '',
-        status_id: pet.status_id || '',
-        current_weight: pet.current_weight?.toString() || ''
+        origin_id: pet.origin_id || "",
+        acquired_at: pet.acquired_at || "",
+        status_id: pet.status_id || "",
+        current_weight: pet.current_weight?.toString() || "",
       });
     }
-    setError('');
-    setSuccess('');
+    setError("");
+    setSuccess("");
     setIsEditing(false);
   };
 
@@ -198,10 +244,14 @@ export default function PetDetail() {
   };
 
   // Funciones helper
-  const getSpeciesName = (id) => species.find(sp => sp.species_id === id)?.display_name || "—";
-  const getSexName = (id) => sexes.find(sx => sx.sex_id === id)?.display_name || "—";
-  const getOriginName = (id) => origins.find(or => or.origin_id === id)?.display_name || "—";
-  const getStatusName = (id) => statuses.find(st => st.status_id === id)?.display_name || "—";
+  const getSpeciesName = (id) =>
+    species.find((sp) => sp.species_id === id)?.display_name || "—";
+  const getSexName = (id) =>
+    sexes.find((sx) => sx.sex_id === id)?.display_name || "—";
+  const getOriginName = (id) =>
+    origins.find((or) => or.origin_id === id)?.display_name || "—";
+  const getStatusName = (id) =>
+    statuses.find((st) => st.status_id === id)?.display_name || "—";
 
   if (loading) {
     return (
@@ -216,7 +266,9 @@ export default function PetDetail() {
       <div className="min-h-screen bg-gray-50 flex items-center justify-center">
         <div className="text-center">
           <p className="text-gray-600 mb-4">Mascota no encontrada</p>
-          <Link to="/app" className="text-blue-600 hover:underline">Volver al Dashboard</Link>
+          <Link to="/app" className="text-blue-600 hover:underline">
+            Volver al Dashboard
+          </Link>
         </div>
       </div>
     );
@@ -232,12 +284,12 @@ export default function PetDetail() {
         <div className="max-w-5xl mx-auto px-6 py-4">
           <div className="flex items-center justify-between">
             <button
-              onClick={() => navigate('/app')}
+              onClick={() => navigate("/app")}
               className="flex items-center gap-2 text-gray-600 hover:text-gray-900 text-sm"
             >
               ← Volver al Dashboard
             </button>
-            
+
             {canEdit && !isEditing && (
               <div className="flex gap-2">
                 <button
@@ -263,7 +315,7 @@ export default function PetDetail() {
                   disabled={saving}
                   className="px-4 py-2 bg-green-600 text-white rounded-lg text-sm hover:bg-green-700 disabled:opacity-50"
                 >
-                  {saving ? 'Guardando...' : '💾 Guardar'}
+                  {saving ? "Guardando..." : "💾 Guardar"}
                 </button>
                 <button
                   onClick={handleCancel}
@@ -274,7 +326,7 @@ export default function PetDetail() {
               </div>
             )}
           </div>
-          
+
           <div className="mt-4">
             <h1 className="text-3xl font-bold">{pet.name}</h1>
             <p className="text-gray-500 text-sm mt-1">Perfil de mascota</p>
@@ -307,7 +359,7 @@ export default function PetDetail() {
                 />
               </div>
             </div>
-            
+
             <div className="flex-1">
               <h2 className="text-2xl font-semibold mb-4">{pet.name}</h2>
               <div className="flex gap-4 text-sm mb-4">
@@ -322,17 +374,22 @@ export default function PetDetail() {
                   </span>
                 )}
               </div>
-              
+
               {age && (
                 <div className="flex items-center gap-2 text-gray-600 mb-2">
                   <span>📅</span>
                   <span>{age}</span>
                 </div>
               )}
-              
+
               {pet.birth_date && (
                 <p className="text-sm text-gray-500">
-                  Fecha de nacimiento: {new Date(pet.birth_date).toLocaleDateString('es-ES', {day: '2-digit', month: '2-digit', year: 'numeric'})}
+                  Fecha de nacimiento:{" "}
+                  {new Date(pet.birth_date).toLocaleDateString("es-ES", {
+                    day: "2-digit",
+                    month: "2-digit",
+                    year: "numeric",
+                  })}
                 </p>
               )}
             </div>
@@ -345,33 +402,41 @@ export default function PetDetail() {
             <div className="bg-white rounded-t-2xl border-t border-x shadow-sm">
               <div className="flex border-b">
                 <button
-                  onClick={() => setActiveTab('id')}
+                  onClick={() => setActiveTab("id")}
                   className={`flex-1 px-6 py-4 text-sm font-medium transition-colors ${
-                    activeTab === 'id' ? 'border-b-2 border-black text-black' : 'text-gray-500 hover:text-gray-700'
+                    activeTab === "id"
+                      ? "border-b-2 border-black text-black"
+                      : "text-gray-500 hover:text-gray-700"
                   }`}
                 >
                   ID
                 </button>
                 <button
-                  onClick={() => setActiveTab('perfil')}
+                  onClick={() => setActiveTab("perfil")}
                   className={`flex-1 px-6 py-4 text-sm font-medium transition-colors ${
-                    activeTab === 'perfil' ? 'border-b-2 border-black text-black' : 'text-gray-500 hover:text-gray-700'
+                    activeTab === "perfil"
+                      ? "border-b-2 border-black text-black"
+                      : "text-gray-500 hover:text-gray-700"
                   }`}
                 >
                   Perfil
                 </button>
                 <button
-                  onClick={() => setActiveTab('historial')}
+                  onClick={() => setActiveTab("historial")}
                   className={`flex-1 px-6 py-4 text-sm font-medium transition-colors ${
-                    activeTab === 'historial' ? 'border-b-2 border-black text-black' : 'text-gray-500 hover:text-gray-700'
+                    activeTab === "historial"
+                      ? "border-b-2 border-black text-black"
+                      : "text-gray-500 hover:text-gray-700"
                   }`}
                 >
                   Historial médico
                 </button>
                 <button
-                  onClick={() => setActiveTab('rutinas')}
+                  onClick={() => setActiveTab("rutinas")}
                   className={`flex-1 px-6 py-4 text-sm font-medium transition-colors ${
-                    activeTab === 'rutinas' ? 'border-b-2 border-black text-black' : 'text-gray-500 hover:text-gray-700'
+                    activeTab === "rutinas"
+                      ? "border-b-2 border-black text-black"
+                      : "text-gray-500 hover:text-gray-700"
                   }`}
                 >
                   Rutinas y eventos
@@ -380,50 +445,96 @@ export default function PetDetail() {
             </div>
 
             <div className="bg-white rounded-b-2xl border-x border-b shadow-sm p-8">
-              {activeTab === 'id' && (
+              {activeTab === "id" && (
                 <div>
                   <div className="flex items-center gap-3 mb-6">
                     <span className="text-2xl">🔲</span>
-                    <h3 className="text-xl font-semibold">Identificación QR de {pet.name}</h3>
+                    <h3 className="text-xl font-semibold">
+                      Identificación QR de {pet.name}
+                    </h3>
                   </div>
-                  
+
                   <p className="text-gray-600 mb-6">
-                    Genera un código QR único para tu mascota. Al escanearlo, mostrará información de contacto del dueño y datos básicos de la mascota.
+                    Genera un código QR único para tu mascota. Al escanearlo,
+                    mostrará información de contacto del dueño y datos básicos
+                    de la mascota.
                   </p>
-                  
+
                   <button className="px-6 py-3 bg-black text-white rounded-xl hover:bg-gray-800">
                     🔲 Generar Código QR
                   </button>
 
                   {owner && (
                     <div className="mt-8 p-6 border rounded-2xl bg-gray-50">
-                      <h4 className="font-semibold mb-4">Información Visible al Escanear</h4>
+                      <h4 className="font-semibold mb-4">
+                        Información Visible al Escanear
+                      </h4>
                       <p className="text-sm text-gray-600 mb-4">
-                        Al escanear el código QR, se mostrará la siguiente información:
+                        Al escanear el código QR, se mostrará la siguiente
+                        información:
                       </p>
 
                       <div className="space-y-6">
                         <div>
-                          <h5 className="font-medium mb-3">💝 Información del Dueño:</h5>
+                          <h5 className="font-medium mb-3">
+                            💝 Información del Dueño:
+                          </h5>
                           <div className="ml-6 space-y-2 text-sm">
-                            <p>❤️ {owner.name}</p>
-                            {owner.phone && <p><span className="font-medium">Teléfono:</span> {owner.phone}</p>}
-                            {owner.email && <p><span className="font-medium">Email:</span> {owner.email}</p>}
+                            <p>❤️ {owner.full_name || "Sin nombre"}</p>
+                            {owner.phone && (
+                              <p>
+                                <span className="font-medium">Teléfono:</span>{" "}
+                                {owner.phone}
+                              </p>
+                            )}
+                            {owner.email && (
+                              <p>
+                                <span className="font-medium">Email:</span>{" "}
+                                {owner.email}
+                              </p>
+                            )}
+                            {owner.address_line && (
+                              <p>
+                                <span className="font-medium">Dirección:</span>{" "}
+                                {owner.address_line}
+                              </p>
+                            )}
                           </div>
                         </div>
 
                         <div>
-                          <h5 className="font-medium mb-3">Información de la Mascota:</h5>
+                          <h5 className="font-medium mb-3">
+                            Información de la Mascota:
+                          </h5>
                           <div className="ml-6 space-y-2 text-sm">
                             <div className="flex items-center gap-2">
                               <div className="w-8 h-8 rounded-full overflow-hidden bg-gray-200">
-                                <img src={pet.image_url || "/placeholder-pet.jpg"} alt={pet.name} className="w-full h-full object-cover" />
+                                <img
+                                  src={pet.image_url || "/placeholder-pet.jpg"}
+                                  alt={pet.name}
+                                  className="w-full h-full object-cover"
+                                />
                               </div>
                               <span>{pet.name}</span>
                             </div>
-                            {getSpeciesName(pet.species_id) !== "—" && <p><span className="font-medium">Especie:</span> {getSpeciesName(pet.species_id)}</p>}
-                            {pet.breed && <p><span className="font-medium">Raza:</span> {pet.breed}</p>}
-                            {pet.microchip && <p><span className="font-medium">Microchip:</span> {pet.microchip}</p>}
+                            {getSpeciesName(pet.species_id) !== "—" && (
+                              <p>
+                                <span className="font-medium">Especie:</span>{" "}
+                                {getSpeciesName(pet.species_id)}
+                              </p>
+                            )}
+                            {pet.breed && (
+                              <p>
+                                <span className="font-medium">Raza:</span>{" "}
+                                {pet.breed}
+                              </p>
+                            )}
+                            {pet.microchip && (
+                              <p>
+                                <span className="font-medium">Microchip:</span>{" "}
+                                {pet.microchip}
+                              </p>
+                            )}
                           </div>
                         </div>
                       </div>
@@ -432,33 +543,63 @@ export default function PetDetail() {
                 </div>
               )}
 
-              {activeTab === 'perfil' && (
+              {activeTab === "perfil" && (
                 <div>
-                  <h3 className="text-xl font-semibold mb-6">Información del Perfil</h3>
+                  <h3 className="text-xl font-semibold mb-6">
+                    Información del Perfil
+                  </h3>
                   <div className="grid grid-cols-2 gap-6">
-                    <InfoItem label="Especie" value={getSpeciesName(pet.species_id)} />
-                    <InfoItem label="Raza" value={pet.breed || '—'} />
+                    <InfoItem
+                      label="Especie"
+                      value={getSpeciesName(pet.species_id)}
+                    />
+                    <InfoItem label="Raza" value={pet.breed || "—"} />
                     <InfoItem label="Sexo" value={getSexName(pet.sex_id)} />
-                    <InfoItem label="Microchip" value={pet.microchip || '—'} />
-                    <InfoItem label="Esterilizado/a" value={pet.neutered ? 'Sí' : 'No'} />
-                    <InfoItem label="Peso" value={pet.current_weight ? `${pet.current_weight} kg` : '—'} />
-                    <InfoItem label="Origen" value={getOriginName(pet.origin_id)} />
-                    <InfoItem label="Estado" value={getStatusName(pet.status_id)} />
+                    <InfoItem
+                      label="Microchip"
+                      value={pet.microchip || "—"}
+                    />
+                    <InfoItem
+                      label="Esterilizado/a"
+                      value={pet.neutered ? "Sí" : "No"}
+                    />
+                    <InfoItem
+                      label="Peso"
+                      value={
+                        pet.current_weight ? `${pet.current_weight} kg` : "—"
+                      }
+                    />
+                    <InfoItem
+                      label="Origen"
+                      value={getOriginName(pet.origin_id)}
+                    />
+                    <InfoItem
+                      label="Estado"
+                      value={getStatusName(pet.status_id)}
+                    />
                   </div>
                 </div>
               )}
 
-              {activeTab === 'historial' && (
+              {activeTab === "historial" && (
                 <div>
-                  <h3 className="text-xl font-semibold mb-6">Historial Médico</h3>
-                  <p className="text-gray-500">No hay registros médicos disponibles.</p>
+                  <h3 className="text-xl font-semibold mb-6">
+                    Historial Médico
+                  </h3>
+                  <p className="text-gray-500">
+                    No hay registros médicos disponibles.
+                  </p>
                 </div>
               )}
 
-              {activeTab === 'rutinas' && (
+              {activeTab === "rutinas" && (
                 <div>
-                  <h3 className="text-xl font-semibold mb-6">Rutinas y Eventos</h3>
-                  <p className="text-gray-500">No hay rutinas o eventos registrados.</p>
+                  <h3 className="text-xl font-semibold mb-6">
+                    Rutinas y Eventos
+                  </h3>
+                  <p className="text-gray-500">
+                    No hay rutinas o eventos registrados.
+                  </p>
                 </div>
               )}
             </div>
@@ -469,14 +610,16 @@ export default function PetDetail() {
         {isEditing && (
           <div className="bg-white rounded-2xl border shadow-sm p-8">
             <h3 className="text-xl font-semibold mb-6">Editar Información</h3>
-            
+
             <div className="space-y-6">
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
                 <EditField label="Nombre *">
                   <input
                     type="text"
                     value={formData.name}
-                    onChange={(e) => setFormData({...formData, name: e.target.value})}
+                    onChange={(e) =>
+                      setFormData({ ...formData, name: e.target.value })
+                    }
                     className="w-full px-4 py-2 border rounded-xl"
                   />
                 </EditField>
@@ -484,12 +627,16 @@ export default function PetDetail() {
                 <EditField label="Especie">
                   <select
                     value={formData.species_id}
-                    onChange={(e) => setFormData({...formData, species_id: e.target.value})}
+                    onChange={(e) =>
+                      setFormData({ ...formData, species_id: e.target.value })
+                    }
                     className="w-full px-4 py-2 border rounded-xl bg-white"
                   >
                     <option value="">Seleccionar...</option>
                     {species.map((s) => (
-                      <option key={s.species_id} value={s.species_id}>{s.display_name}</option>
+                      <option key={s.species_id} value={s.species_id}>
+                        {s.display_name}
+                      </option>
                     ))}
                   </select>
                 </EditField>
@@ -498,7 +645,9 @@ export default function PetDetail() {
                   <input
                     type="text"
                     value={formData.breed}
-                    onChange={(e) => setFormData({...formData, breed: e.target.value})}
+                    onChange={(e) =>
+                      setFormData({ ...formData, breed: e.target.value })
+                    }
                     className="w-full px-4 py-2 border rounded-xl"
                   />
                 </EditField>
@@ -506,12 +655,16 @@ export default function PetDetail() {
                 <EditField label="Sexo">
                   <select
                     value={formData.sex_id}
-                    onChange={(e) => setFormData({...formData, sex_id: e.target.value})}
+                    onChange={(e) =>
+                      setFormData({ ...formData, sex_id: e.target.value })
+                    }
                     className="w-full px-4 py-2 border rounded-xl bg-white"
                   >
                     <option value="">Seleccionar...</option>
                     {sexes.map((s) => (
-                      <option key={s.sex_id} value={s.sex_id}>{s.display_name}</option>
+                      <option key={s.sex_id} value={s.sex_id}>
+                        {s.display_name}
+                      </option>
                     ))}
                   </select>
                 </EditField>
@@ -520,9 +673,11 @@ export default function PetDetail() {
                   <input
                     type="date"
                     value={formData.birth_date}
-                    onChange={(e) => setFormData({...formData, birth_date: e.target.value})}
+                    onChange={(e) =>
+                      setFormData({ ...formData, birth_date: e.target.value })
+                    }
                     className="w-full px-4 py-2 border rounded-xl"
-                    max={new Date().toISOString().split('T')[0]}
+                    max={new Date().toISOString().split("T")[0]}
                   />
                 </EditField>
 
@@ -530,7 +685,9 @@ export default function PetDetail() {
                   <input
                     type="text"
                     value={formData.microchip}
-                    onChange={(e) => setFormData({...formData, microchip: e.target.value})}
+                    onChange={(e) =>
+                      setFormData({ ...formData, microchip: e.target.value })
+                    }
                     className="w-full px-4 py-2 border rounded-xl"
                   />
                 </EditField>
@@ -540,7 +697,12 @@ export default function PetDetail() {
                     type="number"
                     step="0.1"
                     value={formData.current_weight}
-                    onChange={(e) => setFormData({...formData, current_weight: e.target.value})}
+                    onChange={(e) =>
+                      setFormData({
+                        ...formData,
+                        current_weight: e.target.value,
+                      })
+                    }
                     className="w-full px-4 py-2 border rounded-xl"
                   />
                 </EditField>
@@ -548,12 +710,16 @@ export default function PetDetail() {
                 <EditField label="Origen">
                   <select
                     value={formData.origin_id}
-                    onChange={(e) => setFormData({...formData, origin_id: e.target.value})}
+                    onChange={(e) =>
+                      setFormData({ ...formData, origin_id: e.target.value })
+                    }
                     className="w-full px-4 py-2 border rounded-xl bg-white"
                   >
                     <option value="">Seleccionar...</option>
                     {origins.map((o) => (
-                      <option key={o.origin_id} value={o.origin_id}>{o.display_name}</option>
+                      <option key={o.origin_id} value={o.origin_id}>
+                        {o.display_name}
+                      </option>
                     ))}
                   </select>
                 </EditField>
@@ -561,12 +727,16 @@ export default function PetDetail() {
                 <EditField label="Estado">
                   <select
                     value={formData.status_id}
-                    onChange={(e) => setFormData({...formData, status_id: e.target.value})}
+                    onChange={(e) =>
+                      setFormData({ ...formData, status_id: e.target.value })
+                    }
                     className="w-full px-4 py-2 border rounded-xl bg-white"
                   >
                     <option value="">Seleccionar...</option>
                     {statuses.map((s) => (
-                      <option key={s.status_id} value={s.status_id}>{s.display_name}</option>
+                      <option key={s.status_id} value={s.status_id}>
+                        {s.display_name}
+                      </option>
                     ))}
                   </select>
                 </EditField>
@@ -576,47 +746,60 @@ export default function PetDetail() {
                     <input
                       type="checkbox"
                       checked={formData.neutered}
-                      onChange={(e) => setFormData({...formData, neutered: e.target.checked})}
+                      onChange={(e) =>
+                        setFormData({ ...formData, neutered: e.target.checked })
+                      }
                       className="w-5 h-5"
                     />
-                    <span className="text-sm font-medium">Esterilizado/Castrado</span>
+                    <span className="text-sm font-medium">
+                      Esterilizado/Castrado
+                    </span>
                   </label>
                 </div>
 
-            <div className="sm:col-span-2">
-              <EditField label="Subir otra imagen">
-                <input
-                  type="file"
-                  accept="image/*"
-                  onChange={async (e) => {
-                    const file = e.target.files[0];
-                    if (!file) return;
+                <div className="sm:col-span-2">
+                  <EditField label="Subir otra imagen">
+                    <input
+                      type="file"
+                      accept="image/*"
+                      onChange={async (e) => {
+                        const file = e.target.files[0];
+                        if (!file) return;
 
-                    // Guardar dentro de la carpeta user_id en el bucket pets
-                    const fileName = `${user.id}/${file.name}`;
+                        // Guardar dentro de la carpeta user_id en el bucket pets
+                        const fileName = `${user.id}/${file.name}`;
 
-                    // Subir al bucket "pets"
-                    const { error: uploadError } = await supabase.storage
-                      .from("pets")
-                      .upload(fileName, file, { cacheControl: "3600", upsert: true });
+                        // Subir al bucket "pets"
+                        const { error: uploadError } = await supabase.storage
+                          .from("pets")
+                          .upload(fileName, file, {
+                            cacheControl: "3600",
+                            upsert: true,
+                          });
 
-                    if (uploadError) {
-                      console.error("Error subiendo imagen:", uploadError.message);
-                      return;
-                    }
+                        if (uploadError) {
+                          console.error(
+                            "Error subiendo imagen:",
+                            uploadError.message
+                          );
+                          return;
+                        }
 
-                    // Obtener URL pública
-                    const { data: publicData } = supabase.storage.from("pets").getPublicUrl(fileName);
+                        // Obtener URL pública
+                        const { data: publicData } = supabase.storage
+                          .from("pets")
+                          .getPublicUrl(fileName);
 
-                    // Actualizar formData con la nueva URL
-                    setFormData({ ...formData, image_url: publicData.publicUrl });
-                  }}
-                  className="w-full px-4 py-2 border rounded-xl"
-                />
-              </EditField>
-            </div>
-
-                
+                        // Actualizar formData con la nueva URL
+                        setFormData({
+                          ...formData,
+                          image_url: publicData.publicUrl,
+                        });
+                      }}
+                      className="w-full px-4 py-2 border rounded-xl"
+                    />
+                  </EditField>
+                </div>
               </div>
             </div>
           </div>
@@ -638,7 +821,9 @@ function InfoItem({ label, value }) {
 function EditField({ label, children }) {
   return (
     <div>
-      <label className="block text-sm font-medium text-gray-700 mb-2">{label}</label>
+      <label className="block text-sm font-medium text-gray-700 mb-2">
+        {label}
+      </label>
       {children}
     </div>
   );

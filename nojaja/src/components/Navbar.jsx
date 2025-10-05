@@ -83,8 +83,6 @@ export default function Navbar() {
       {open && (
         <div className="border-t bg-white md:hidden">
           <div className="mx-auto flex max-w-7xl flex-col gap-2 px-4 py-3">
-            <NavItem to="/" end onClick={() => setOpen(false)}>Inicio</NavItem>
-            <NavItem to="/dashboard" onClick={() => setOpen(false)}>Dashboard</NavItem>
 
             <div className="h-px bg-gray-200 my-2" />
 
