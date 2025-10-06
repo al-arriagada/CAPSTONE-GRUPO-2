@@ -19,8 +19,8 @@ export default function PetDetail() {
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
   const [showArchiveModal, setShowArchiveModal] = useState(false);
+  const [weightError, setWeightError] = useState("");
 
-  // Catálogos dinámicos
   const [species, setSpecies] = useState([]);
   const [sexes, setSexes] = useState([]);
   const [origins, setOrigins] = useState([]);
@@ -41,11 +41,7 @@ export default function PetDetail() {
     current_weight: "",
   });
 
-  // ========================
-  // Helpers nuevos (DUEÑO)
-  // ========================
   async function fetchOwnerContact(userId) {
-    // 1) app_user: nombre + email
     const { data: base, error: e1 } = await supabase
       .schema("petcare")
       .from("app_user")
@@ -54,7 +50,6 @@ export default function PetDetail() {
       .maybeSingle();
     if (e1) throw e1;
 
-    // 2) user_pii: teléfono + dirección (puede no existir fila)
     const { data: pii, error: e2 } = await supabase
       .schema("petcare")
       .from("user_pii")
@@ -70,7 +65,33 @@ export default function PetDetail() {
     };
   }
 
-  // Cargar catálogos al iniciar
+  const validateWeight = (value) => {
+    if (!value || value.trim() === "") {
+      setWeightError("");
+      return true;
+    }
+
+    const weight = parseFloat(value);
+
+    if (isNaN(weight)) {
+      setWeightError("El peso debe ser un número válido");
+      return false;
+    }
+
+    if (weight <= 0) {
+      setWeightError("El peso debe ser mayor a 0");
+      return false;
+    }
+
+    if (weight > 500) {
+      setWeightError("El peso no puede ser mayor a 500 kg");
+      return false;
+    }
+
+    setWeightError("");
+    return true;
+  };
+
   useEffect(() => {
     loadCatalogs();
   }, []);
@@ -97,7 +118,6 @@ export default function PetDetail() {
     setLoading(true);
     setError("");
 
-    // PET
     const { data, error } = await supabase
       .schema("petcare")
       .from("pet")
@@ -129,12 +149,10 @@ export default function PetDetail() {
         current_weight: data.current_weight?.toString() || "",
       });
 
-      // OWNER (FIX: antes llamaba a petcare.user → 404)
       try {
         const o = await fetchOwnerContact(data.user_id);
         setOwner(o);
       } catch (e) {
-        // Si no hay PII no es error fatal
         console.warn("No fue posible cargar owner/PII:", e?.message);
       }
     }
@@ -153,8 +171,7 @@ export default function PetDetail() {
       months += 12;
     }
 
-    if (years === 0)
-      return `${months} ${months === 1 ? "mes" : "meses"}`;
+    if (years === 0) return `${months} ${months === 1 ? "mes" : "meses"}`;
     return `${years} ${years === 1 ? "año" : "años"}${
       months > 0 ? ` y ${months} ${months === 1 ? "mes" : "meses"}` : ""
     }`;
@@ -163,6 +180,11 @@ export default function PetDetail() {
   const handleSave = async () => {
     if (!formData.name.trim()) {
       setError("El nombre es requerido");
+      return;
+    }
+
+    if (formData.current_weight && !validateWeight(formData.current_weight)) {
+      setError("Por favor corrige el peso de la mascota");
       return;
     }
 
@@ -203,6 +225,7 @@ export default function PetDetail() {
     setTimeout(() => {
       setIsEditing(false);
       setSuccess("");
+      setWeightError("");
     }, 1500);
   };
 
@@ -225,6 +248,7 @@ export default function PetDetail() {
     }
     setError("");
     setSuccess("");
+    setWeightError("");
     setIsEditing(false);
   };
 
@@ -246,7 +270,6 @@ export default function PetDetail() {
     navigate("/app");
   };
 
-  // Funciones helper
   const getSpeciesName = (id) =>
     species.find((sp) => sp.species_id === id)?.display_name || "—";
   const getSexName = (id) =>
@@ -282,7 +305,6 @@ export default function PetDetail() {
 
   return (
     <div className="min-h-screen bg-gray-50">
-      {/* Header */}
       <div className="bg-white border-b">
         <div className="max-w-5xl mx-auto px-6 py-4">
           <div className="flex items-center justify-between">
@@ -297,12 +319,12 @@ export default function PetDetail() {
               <div className="flex gap-2">
                 <button
                   onClick={() => setIsEditing(true)}
-                  className="px-4 py-2 bg-black text-white rounded-lg text-sm hover:bg-gray-800 flex items-center gap-2"
+                  className="px-4 py-2 bg-black text-white rounded-lg text-sm hover:bg-gray-800"
                 >
-                  ✏️ Editar Perfil
+                  Editar Perfil
                 </button>
                 <button
-                  onClick={setShowArchiveModal}
+                  onClick={() => setShowArchiveModal(true)}
                   disabled={deleting}
                   className="px-4 py-2 bg-red-600 text-white rounded-lg text-sm hover:bg-red-700 disabled:opacity-50"
                 >
@@ -315,16 +337,16 @@ export default function PetDetail() {
               <div className="flex gap-2">
                 <button
                   onClick={handleSave}
-                  disabled={saving}
+                  disabled={saving || !!weightError}
                   className="px-4 py-2 bg-green-600 text-white rounded-lg text-sm hover:bg-green-700 disabled:opacity-50"
                 >
-                  {saving ? "Guardando..." : "💾 Guardar"}
+                  {saving ? "Guardando..." : "Guardar"}
                 </button>
                 <button
                   onClick={handleCancel}
                   className="px-4 py-2 border rounded-lg text-sm hover:bg-gray-50"
                 >
-                  ✖️ Cancelar
+                  Cancelar
                 </button>
               </div>
             )}
@@ -338,7 +360,6 @@ export default function PetDetail() {
       </div>
 
       <div className="max-w-5xl mx-auto px-6 py-8">
-        {/* Mensajes */}
         {error && (
           <div className="mb-6 p-4 bg-red-50 border border-red-200 rounded-xl">
             <p className="text-red-600 text-sm">{error}</p>
@@ -350,7 +371,6 @@ export default function PetDetail() {
           </div>
         )}
 
-        {/* Card principal */}
         <div className="bg-white rounded-2xl border shadow-sm p-8 mb-6">
           <div className="flex items-start gap-8">
             <div className="flex-shrink-0">
@@ -399,7 +419,6 @@ export default function PetDetail() {
           </div>
         </div>
 
-        {/* Tabs */}
         {!isEditing && (
           <>
             <div className="bg-white rounded-t-2xl border-t border-x shadow-sm">
@@ -480,10 +499,10 @@ export default function PetDetail() {
                       <div className="space-y-6">
                         <div>
                           <h5 className="font-medium mb-3">
-                            💝 Información del Dueño:
+                            Información del Dueño:
                           </h5>
                           <div className="ml-6 space-y-2 text-sm">
-                            <p>❤️ {owner.full_name || "Sin nombre"}</p>
+                            <p>{owner.full_name || "Sin nombre"}</p>
                             {owner.phone && (
                               <p>
                                 <span className="font-medium">Teléfono:</span>{" "}
@@ -558,10 +577,7 @@ export default function PetDetail() {
                     />
                     <InfoItem label="Raza" value={pet.breed || "—"} />
                     <InfoItem label="Sexo" value={getSexName(pet.sex_id)} />
-                    <InfoItem
-                      label="Microchip"
-                      value={pet.microchip || "—"}
-                    />
+                    <InfoItem label="Microchip" value={pet.microchip || "—"} />
                     <InfoItem
                       label="Esterilizado/a"
                       value={pet.neutered ? "Sí" : "No"}
@@ -608,8 +624,7 @@ export default function PetDetail() {
             </div>
           </>
         )}
-        
-        {/* Formulario de edición */}
+
         {isEditing && (
           <div className="bg-white rounded-2xl border shadow-sm p-8">
             <h3 className="text-xl font-semibold mb-6">Editar Información</h3>
@@ -695,18 +710,28 @@ export default function PetDetail() {
                   />
                 </EditField>
 
-                <EditField label="Peso (kg)">
+                <EditField 
+                  label="Peso (kg)" 
+                  error={weightError}
+                  helpText="Debe ser mayor a 0 y menor a 500 kg"
+                >
                   <input
                     type="number"
                     step="0.1"
+                    min="0.1"
+                    max="500"
                     value={formData.current_weight}
-                    onChange={(e) =>
+                    onChange={(e) => {
                       setFormData({
                         ...formData,
                         current_weight: e.target.value,
-                      })
-                    }
-                    className="w-full px-4 py-2 border rounded-xl"
+                      });
+                      validateWeight(e.target.value);
+                    }}
+                    className={`w-full px-4 py-2 border rounded-xl ${
+                      weightError ? 'border-red-500 focus:ring-red-500' : ''
+                    }`}
+                    placeholder="Ej: 25.5"
                   />
                 </EditField>
 
@@ -769,10 +794,8 @@ export default function PetDetail() {
                         const file = e.target.files[0];
                         if (!file) return;
 
-                        // Guardar dentro de la carpeta user_id en el bucket pets
                         const fileName = `${user.id}/${file.name}`;
 
-                        // Subir al bucket "pets"
                         const { error: uploadError } = await supabase.storage
                           .from("pets")
                           .upload(fileName, file, {
@@ -781,19 +804,14 @@ export default function PetDetail() {
                           });
 
                         if (uploadError) {
-                          console.error(
-                            "Error subiendo imagen:",
-                            uploadError.message
-                          );
+                          console.error("Error subiendo imagen:", uploadError.message);
                           return;
                         }
 
-                        // Obtener URL pública
                         const { data: publicData } = supabase.storage
                           .from("pets")
                           .getPublicUrl(fileName);
 
-                        // Actualizar formData con la nueva URL
                         setFormData({
                           ...formData,
                           image_url: publicData.publicUrl,
