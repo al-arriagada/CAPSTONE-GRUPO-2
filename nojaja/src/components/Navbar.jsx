@@ -7,8 +7,8 @@ import useProfile from "../hooks/useProfile.js";
 export default function Navbar() {
   const [open, setOpen] = useState(false);
   const navigate = useNavigate();
-  const { user, signOut, loading } = useAuth(); 
-  const { displayName, avatarUrl, loading: loadingProfile } = useProfile(user);
+  const { user, signOut, loading } = useAuth();
+  const { profile, displayName, loading: loadingProfile } = useProfile(user);
 
   const handleLogout = async () => {
     navigate("/", { replace: true });
@@ -22,6 +22,7 @@ export default function Navbar() {
   return (
     <nav className="sticky top-0 z-50 border-b bg-white/80 backdrop-blur">
       <div className="mx-auto flex h-14 max-w-7xl items-center justify-between px-4 sm:px-6 lg:px-8">
+        {/* Left: logo */}
         <div className="flex items-center gap-2">
           <Link to="/" className="flex items-center gap-2">
             <span className="text-xl">🐾</span>
@@ -29,10 +30,12 @@ export default function Navbar() {
           </Link>
         </div>
 
+        {/* Center: links (ocultos en mobile) */}
         <div className="hidden items-center gap-4 md:flex">
           {user && <NavItem to="/app">Dashboard</NavItem>}
         </div>
 
+        {/* Right: auth actions */}
         <div className="hidden items-center gap-2 md:flex">
           {loading ? (
             <div className="h-8 w-24 animate-pulse rounded-md bg-gray-200" />
@@ -40,7 +43,7 @@ export default function Navbar() {
             <UserMenu
               user={user}
               name={displayName}
-              avatarUrl={avatarUrl}
+              avatarPath={profile?.avatar_url}
               loadingName={loadingProfile}
               onLogout={handleLogout}
             />
@@ -62,6 +65,7 @@ export default function Navbar() {
           )}
         </div>
 
+        {/* Mobile toggle */}
         <button
           className="inline-flex items-center rounded-xl border px-2 py-1 md:hidden"
           onClick={() => setOpen((v) => !v)}
@@ -71,6 +75,7 @@ export default function Navbar() {
         </button>
       </div>
 
+      {/* Mobile menu */}
       {open && (
         <div className="border-t bg-white md:hidden">
           <div className="mx-auto flex max-w-7xl flex-col gap-2 px-4 py-3">
@@ -81,7 +86,7 @@ export default function Navbar() {
             ) : user ? (
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-3">
-                  <Avatar fallback={user?.email} avatarUrl={avatarUrl} />
+                  <Avatar fallback={user?.email} avatarUrl={profile?.avatar_url} />
                   <div className="text-sm">
                     <div className="font-medium leading-tight">
                       {loadingProfile ? "Cargando..." : (displayName || user?.email)}
@@ -139,12 +144,13 @@ function NavItem({ to, end, children, onClick }) {
   );
 }
 
-function UserMenu({ user, name, avatarUrl, loadingName, onLogout }) {
+function UserMenu({ user, name, avatarPath, loadingName, onLogout }) {
   return (
     <div className="flex items-center gap-3">
-      <Avatar fallback={user?.email} avatarUrl={avatarUrl} />
+      <Avatar fallback={user?.email} avatarUrl={avatarPath} />
       <span className="hidden text-sm text-gray-700 sm:inline">
-        Bienvenido, <strong>{loadingName ? "..." : (name || user?.email?.split("@")[0])}</strong>
+        Bienvenido, {" "}
+        <strong>{loadingName ? "..." : (name || user?.email?.split("@")[0])}</strong>
       </span>
       <button
         onClick={onLogout}
@@ -158,18 +164,17 @@ function UserMenu({ user, name, avatarUrl, loadingName, onLogout }) {
 
 function Avatar({ fallback, avatarUrl }) {
   const letter = (fallback || "?").toString().charAt(0).toUpperCase();
+  const fullUrl = avatarUrl
+    ? `https://owrosyqgjlelskjhcmbb.supabase.co/storage/v1/object/public/owners/${avatarUrl}?t=${Date.now()}`
+    : null;
+
   return (
     <Link
       to="/app/profile"
       className="flex h-8 w-8 items-center justify-center rounded-full bg-gray-900 text-sm font-semibold text-white hover:scale-105 transition overflow-hidden"
     >
-      {avatarUrl ? (
-        <img
-          src={avatarUrl}
-          alt="avatar"
-          className="h-full w-full object-cover"
-          onError={(e) => { e.currentTarget.style.display = 'none'; }}
-        />
+      {fullUrl ? (
+        <img src={fullUrl} alt="avatar" className="h-full w-full object-cover" />
       ) : (
         letter
       )}
