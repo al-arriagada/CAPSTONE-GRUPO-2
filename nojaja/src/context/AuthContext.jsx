@@ -1,16 +1,49 @@
 // src/context/AuthContext.jsx
 import React, { createContext, useContext, useEffect, useRef, useState } from "react";
 import { supabase } from "../supabaseClient";
-import { ensureProfileOnAuth } from "../services/profile"; // ⬅️ usa el helper idempotente
+import { ensureProfileOnAuth } from "../services/profile";
 
 const AuthContext = createContext(null);
 
 export const AuthProvider = ({ children }) => {
-  const [user, setUser]     = useState(null);
+  const [user, setUser] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [avatarUrl, setAvatarUrl] = useState(null);
 
-  // Evita ejecutar ensureProfile varias veces para el mismo user.id
   const lastEnsuredRef = useRef(null);
+
+  // Función para actualizar el avatar desde cualquier componente
+  const updateUserAvatar = (avatarPath) => {
+    console.log("🔄 updateUserAvatar llamado con:", avatarPath);
+    if (!avatarPath) {
+      setAvatarUrl(null);
+      return;
+    }
+    const { data } = supabase.storage.from("owners").getPublicUrl(avatarPath);
+    const fullUrl = `${data?.publicUrl}?t=${Date.now()}`;
+    console.log("✅ Nueva URL de avatar:", fullUrl);
+    setAvatarUrl(fullUrl);
+  };
+
+  // Cargar avatar desde la base de datos
+  const loadUserAvatar = async (userId) => {
+    try {
+      const { data: appUser } = await supabase
+        .from("app_user")
+        .select("avatar_url")
+        .eq("user_id", userId)
+        .single();
+
+      if (appUser?.avatar_url) {
+        updateUserAvatar(appUser.avatar_url);
+      } else {
+        setAvatarUrl(null);
+      }
+    } catch (err) {
+      console.error("Error loading avatar:", err);
+      setAvatarUrl(null);
+    }
+  };
 
   useEffect(() => {
     let ignore = false;
@@ -21,6 +54,7 @@ export const AuthProvider = ({ children }) => {
         console.error("getSession:", error);
         if (!ignore) {
           setUser(null);
+          setAvatarUrl(null);
           setLoading(false);
         }
         return;
@@ -37,6 +71,8 @@ export const AuthProvider = ({ children }) => {
         ensureProfileOnAuth(u).catch((e) =>
           console.warn("ensureProfileOnAuth(init):", e?.message || e)
         );
+        // Cargar avatar del usuario
+        loadUserAvatar(u.id);
       }
 
       if (!ignore) setLoading(false);
@@ -60,10 +96,15 @@ export const AuthProvider = ({ children }) => {
           ensureProfileOnAuth(u).catch((e) =>
             console.warn("ensureProfileOnAuth(event):", e?.message || e)
           );
+          // Cargar avatar en eventos de autenticación
+          loadUserAvatar(u.id);
         }
 
-        // Al cerrar sesión, resetea el guard
-        if (!u) lastEnsuredRef.current = null;
+        // Al cerrar sesión, resetea el guard y avatar
+        if (!u) {
+          lastEnsuredRef.current = null;
+          setAvatarUrl(null);
+        }
       }
     );
 
@@ -77,11 +118,21 @@ export const AuthProvider = ({ children }) => {
     const { error } = await supabase.auth.signOut();
     if (error) throw error;
     setUser(null);
+    setAvatarUrl(null);
     lastEnsuredRef.current = null;
   };
 
+  // ✅ ASEGÚRATE DE EXPORTAR updateUserAvatar
+  const value = {
+    user,
+    loading,
+    signOut,
+    avatarUrl,
+    updateUserAvatar, // ✅ Incluir en el value
+  };
+
   return (
-    <AuthContext.Provider value={{ user, loading, signOut }}>
+    <AuthContext.Provider value={value}>
       {!loading ? (
         children
       ) : (
