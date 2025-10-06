@@ -7,23 +7,35 @@ export default function useProfile(user) {
 
   useEffect(() => {
     let abort = false;
+
     async function load() {
-      if (!user) { setProfile(null); setLoading(false); return; }
+      if (!user) {
+        setProfile(null);
+        setLoading(false);
+        return;
+      }
+
       setLoading(true);
+
       const { data, error } = await supabase
         .schema("petcare")
         .from("app_user")
-        .select("full_name, email")
+        .select("full_name, email, avatar_url")
         .eq("user_id", user.id)
         .maybeSingle();
+
       if (!abort) {
         if (error) console.error("load profile:", error);
         setProfile(data ?? null);
         setLoading(false);
       }
     }
+
     load();
-    return () => { abort = true; };
+
+    return () => {
+      abort = true;
+    };
   }, [user?.id]);
 
   const displayName =
@@ -32,5 +44,7 @@ export default function useProfile(user) {
     user?.user_metadata?.name ||
     (user?.email ? user.email.split("@")[0] : "");
 
-  return { profile, displayName, loading };
+  const avatarUrl = profile?.avatar_url ?? null;
+
+  return { profile, displayName, avatarUrl, loading };
 }

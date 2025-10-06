@@ -8,7 +8,7 @@ export default function Navbar() {
   const [open, setOpen] = useState(false);
   const navigate = useNavigate();
   const { user, signOut, loading } = useAuth(); 
-  const { displayName, loading: loadingProfile, avatarUrl } = useProfile(user);
+  const { displayName, avatarUrl, loading: loadingProfile } = useProfile(user);
 
   const handleLogout = async () => {
     navigate("/", { replace: true });
@@ -37,22 +37,38 @@ export default function Navbar() {
           {loading ? (
             <div className="h-8 w-24 animate-pulse rounded-md bg-gray-200" />
           ) : user ? (
-              <UserMenu
-                user={user}
-                name={displayName}
-                avatarUrl={avatarUrl}
-                loadingName={loadingProfile}
-                onLogout={handleLogout}
-              />
+            <UserMenu
+              user={user}
+              name={displayName}
+              avatarUrl={avatarUrl}
+              loadingName={loadingProfile}
+              onLogout={handleLogout}
+            />
           ) : (
             <>
-              <Link to="/signin" className="rounded-xl border px-3 py-1.5 text-sm hover:bg-gray-50">Iniciar sesión</Link>
-              <Link to="/signup" className="rounded-xl bg-black px-3 py-1.5 text-sm text-white hover:opacity-90">Registrarse</Link>
+              <Link
+                to="/signin"
+                className="rounded-xl border px-3 py-1.5 text-sm hover:bg-gray-50"
+              >
+                Iniciar sesión
+              </Link>
+              <Link
+                to="/signup"
+                className="rounded-xl bg-black px-3 py-1.5 text-sm text-white hover:opacity-90"
+              >
+                Registrarse
+              </Link>
             </>
           )}
         </div>
 
-        <button onClick={() => setOpen((v) => !v)} className="inline-flex items-center rounded-xl border px-2 py-1 md:hidden" aria-label="Abrir menú">☰</button>
+        <button
+          className="inline-flex items-center rounded-xl border px-2 py-1 md:hidden"
+          onClick={() => setOpen((v) => !v)}
+          aria-label="Abrir menú"
+        >
+          ☰
+        </button>
       </div>
 
       {open && (
@@ -73,12 +89,29 @@ export default function Navbar() {
                     <div className="text-gray-500">Sesión activa</div>
                   </div>
                 </div>
-                <button onClick={() => { setOpen(false); handleLogout(); }} className="rounded-xl border px-3 py-1.5 text-sm hover:bg-gray-50">Cerrar sesión</button>
+                <button
+                  onClick={() => { setOpen(false); handleLogout(); }}
+                  className="rounded-xl border px-3 py-1.5 text-sm hover:bg-gray-50"
+                >
+                  Cerrar sesión
+                </button>
               </div>
             ) : (
               <div className="flex gap-2">
-                <Link to="/signin" onClick={() => setOpen(false)} className="flex-1 rounded-xl border px-3 py-1.5 text-center text-sm hover:bg-gray-50">Iniciar sesión</Link>
-                <Link to="/signup" onClick={() => setOpen(false)} className="flex-1 rounded-xl bg-black px-3 py-1.5 text-center text-sm text-white hover:opacity-90">Registrarse</Link>
+                <Link
+                  to="/signin"
+                  onClick={() => setOpen(false)}
+                  className="flex-1 rounded-xl border px-3 py-1.5 text-center text-sm hover:bg-gray-50"
+                >
+                  Iniciar sesión
+                </Link>
+                <Link
+                  to="/signup"
+                  onClick={() => setOpen(false)}
+                  className="flex-1 rounded-xl bg-black px-3 py-1.5 text-center text-sm text-white hover:opacity-90"
+                >
+                  Registrarse
+                </Link>
               </div>
             )}
           </div>
@@ -94,24 +127,31 @@ function NavItem({ to, end, children, onClick }) {
       to={to}
       end={end}
       onClick={onClick}
-      className={({ isActive }) => [
-        "rounded-xl px-3 py-1.5 text-sm",
-        isActive ? "bg-black text-white" : "hover:bg-gray-50",
-      ].join(" ")}
+      className={({ isActive }) =>
+        [
+          "rounded-xl px-3 py-1.5 text-sm",
+          isActive ? "bg-black text-white" : "hover:bg-gray-50",
+        ].join(" ")
+      }
     >
       {children}
     </NavLink>
   );
 }
 
-function UserMenu({ user, name, loadingName, avatarUrl, onLogout }) {
+function UserMenu({ user, name, avatarUrl, loadingName, onLogout }) {
   return (
     <div className="flex items-center gap-3">
       <Avatar fallback={user?.email} avatarUrl={avatarUrl} />
       <span className="hidden text-sm text-gray-700 sm:inline">
         Bienvenido, <strong>{loadingName ? "..." : (name || user?.email?.split("@")[0])}</strong>
       </span>
-      <button onClick={onLogout} className="rounded-xl border px-3 py-1.5 text-sm hover:bg-gray-50">Cerrar sesión</button>
+      <button
+        onClick={onLogout}
+        className="rounded-xl border px-3 py-1.5 text-sm hover:bg-gray-50"
+      >
+        Cerrar sesión
+      </button>
     </div>
   );
 }
@@ -119,9 +159,17 @@ function UserMenu({ user, name, loadingName, avatarUrl, onLogout }) {
 function Avatar({ fallback, avatarUrl }) {
   const letter = (fallback || "?").toString().charAt(0).toUpperCase();
   return (
-    <Link to="/app/profile" className="flex h-8 w-8 items-center justify-center rounded-full bg-gray-900 text-sm font-semibold text-white hover:scale-105 transition overflow-hidden">
+    <Link
+      to="/app/profile"
+      className="flex h-8 w-8 items-center justify-center rounded-full bg-gray-900 text-sm font-semibold text-white hover:scale-105 transition overflow-hidden"
+    >
       {avatarUrl ? (
-        <img src={avatarUrl} alt="avatar" className="h-full w-full object-cover" />
+        <img
+          src={avatarUrl}
+          alt="avatar"
+          className="h-full w-full object-cover"
+          onError={(e) => { e.currentTarget.style.display = 'none'; }}
+        />
       ) : (
         letter
       )}
