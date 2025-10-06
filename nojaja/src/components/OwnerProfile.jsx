@@ -70,6 +70,7 @@ export default function OwnerProfile() {
     return local.slice(0, 8);
   };
 
+
   const formatPhone = (local8) => {
     const d = (local8 || "").replace(/\D/g, "").slice(0, 8);
     const a = d.slice(0, 4);
@@ -263,9 +264,8 @@ export default function OwnerProfile() {
         <h1 className="text-3xl font-bold">Mi Perfil</h1>
         <button
           onClick={editMode ? handleSave : () => setEditMode(true)}
-          className={`px-4 py-2 rounded flex items-center gap-2 text-white ${
-            editMode ? "bg-green-600 hover:bg-green-700" : "bg-black hover:bg-gray-800"
-          }`}
+          className={`px-4 py-2 rounded flex items-center gap-2 text-white ${editMode ? "bg-green-600 hover:bg-green-700" : "bg-black hover:bg-gray-800"
+            }`}
         >
           {editMode ? <FaSave /> : <FaEdit />}
           {editMode ? "Guardar Cambios" : "Editar Perfil"}
