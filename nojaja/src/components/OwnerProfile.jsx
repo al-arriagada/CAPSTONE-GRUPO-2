@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useRef } from "react";
 import { supabase } from "../supabaseClient";
 import { useAuth } from "../context/AuthContext";
 import {
@@ -9,18 +9,22 @@ import {
   FaCalendar,
   FaEdit,
   FaSave,
+  FaImage,
 } from "react-icons/fa";
 
 export default function OwnerProfile() {
-  const { user, updateUserAvatar } = useAuth();
+  const { user } = useAuth();
   const [loading, setLoading] = useState(true);
-  const [uploading, setUploading] = useState(false);
   const [profile, setProfile] = useState(null);
   const [editMode, setEditMode] = useState(false);
   const [formData, setFormData] = useState({});
   const [message, setMessage] = useState("");
-  const [avatarFile, setAvatarFile] = useState(null);
-  const [avatarUrl, setAvatarUrl] = useState(null);
+  const [uploading, setUploading] = useState(false);
+  const fileInputRef = useRef(null);
+
+  const avatarUrl = profile?.avatar_url
+    ? `https://owrosyqgjlelskjhcmbb.supabase.co/storage/v1/object/public/owners/${profile.avatar_url}`
+    : null;
 
   useEffect(() => {
     const fetchProfile = async () => {
@@ -39,14 +43,6 @@ export default function OwnerProfile() {
           .eq("user_id", user.id)
           .single();
 
-        const avatarPath = appUser?.avatar_url ?? null;
-        let avatarUrl = null;
-
-        if (avatarPath) {
-          const { data } = supabase.storage.from("owners").getPublicUrl(avatarPath);
-          avatarUrl = data?.publicUrl ?? null;
-        }
-
         const data = {
           user_id: user.id,
           full_name: appUser?.full_name ?? "",
@@ -55,10 +51,9 @@ export default function OwnerProfile() {
           phone: userPii?.phone ?? "",
           birth_date: appUser?.birth_date ?? "",
           gender: appUser?.gender ?? "",
-          avatar_url: avatarPath,
+          avatar_url: appUser?.avatar_url ?? null,
         };
 
-        setAvatarUrl(avatarUrl);
         setProfile(data);
         setFormData(data);
       } catch (err) {
@@ -72,59 +67,14 @@ export default function OwnerProfile() {
   }, [user]);
 
   const handleChange = (e) => {
-    const { name, value, files } = e.target;
-    if (name === "avatar" && files?.[0]) {
-      setAvatarFile(files[0]);
-      // Vista previa opcional
-      const reader = new FileReader();
-      reader.onloadend = () => {
-        setAvatarUrl(reader.result);
-      };
-      reader.readAsDataURL(files[0]);
-    } else {
-      setFormData((prev) => ({ ...prev, [name]: value }));
-    }
+    const { name, value } = e.target;
+    setFormData((prev) => ({ ...prev, [name]: value }));
   };
 
   const handleSave = async () => {
     try {
-      setUploading(true);
       setMessage("");
-      let avatarStoragePath = formData.avatar_url;
 
-      // Subir imagen si hay una nueva
-      if (avatarFile) {
-        const fileExt = avatarFile.name.split(".").pop();
-        const fileName = `${user.id}/avatar.${fileExt}`;
-        
-        console.log("📤 Subiendo imagen:", fileName);
-        
-        const { error: uploadError } = await supabase.storage
-          .from("owners")
-          .upload(fileName, avatarFile, { upsert: true });
-
-        if (uploadError) {
-          console.error("Error subiendo imagen:", uploadError);
-          throw uploadError;
-        }
-        
-        avatarStoragePath = fileName;
-        
-        // Obtener URL pública
-        const { data } = supabase.storage.from("owners").getPublicUrl(fileName);
-        const publicUrl = `${data.publicUrl}?t=${Date.now()}`;
-        setAvatarUrl(publicUrl);
-        
-        console.log("✅ Imagen subida correctamente");
-        console.log("🔄 Actualizando contexto con:", fileName);
-        
-        // ACTUALIZAR EL CONTEXTO PARA QUE EL NAVBAR SE ENTERE
-        updateUserAvatar(fileName);
-      }
-
-      console.log("💾 Guardando perfil en base de datos...");
-
-      // Actualizar app_user
       const { error: appUserError } = await supabase
         .from("app_user")
         .update({
@@ -133,16 +83,11 @@ export default function OwnerProfile() {
           email: formData.email,
           birth_date: formData.birth_date,
           gender: formData.gender,
-          avatar_url: avatarStoragePath,
         })
         .eq("user_id", user.id);
 
-      if (appUserError) {
-        console.error("Error actualizando app_user:", appUserError);
-        throw appUserError;
-      }
+      if (appUserError) throw appUserError;
 
-      // Actualizar user_pii
       const { error: piiError } = await supabase
         .from("user_pii")
         .upsert(
@@ -153,23 +98,52 @@ export default function OwnerProfile() {
           { onConflict: "user_id" }
         );
 
-      if (piiError) {
-        console.error("Error actualizando user_pii:", piiError);
-        throw piiError;
-      }
+      if (piiError) throw piiError;
 
-      setProfile({ ...formData, avatar_url: avatarStoragePath });
-      setAvatarFile(null); // Limpiar archivo seleccionado
+      setProfile({ ...formData });
       setEditMode(false);
       setMessage("Perfil actualizado correctamente ✅");
-      
-      console.log("✅ Perfil guardado exitosamente");
     } catch (err) {
-      console.error("❌ Error saving profile:", err.message);
-      setMessage(`Error al guardar el perfil: ${err.message} ❌`);
-    } finally {
-      setUploading(false);
+      console.error("Error saving profile:", err.message);
+      setMessage("Error al guardar el perfil ❌");
     }
+  };
+
+  const handleUpload = async (e) => {
+    const file = e.target.files[0];
+    if (!file || !user) return;
+
+    setUploading(true);
+    const fileExt = file.name.split(".").pop();
+    const filePath = `${user.id}/avatar.${fileExt}`;
+
+    const { error: uploadError } = await supabase.storage
+      .from("owners")
+      .upload(filePath, file, {
+        upsert: true,
+      });
+
+    if (uploadError) {
+      console.error("Upload error:", uploadError.message);
+      setUploading(false);
+      return;
+    }
+
+    const { error: updateError } = await supabase
+      .from("app_user")
+      .update({ avatar_url: filePath })
+      .eq("user_id", user.id);
+
+    if (updateError) {
+      console.error("Error updating avatar_url:", updateError.message);
+      setUploading(false);
+      return;
+    }
+
+    // actualiza la url del avatar en el estado local
+    setProfile((prev) => ({ ...prev, avatar_url: filePath }));
+    setFormData((prev) => ({ ...prev, avatar_url: filePath }));
+    setUploading(false);
   };
 
   const formatDate = (dateStr) => {
@@ -199,55 +173,42 @@ export default function OwnerProfile() {
         <h1 className="text-3xl font-bold">Mi Perfil</h1>
         <button
           onClick={editMode ? handleSave : () => setEditMode(true)}
-          disabled={uploading}
           className={`px-4 py-2 rounded flex items-center gap-2 text-white ${
-            uploading 
-              ? "bg-gray-400 cursor-not-allowed" 
-              : editMode 
-                ? "bg-green-600 hover:bg-green-700" 
-                : "bg-black hover:bg-gray-800"
+            editMode ? "bg-green-600 hover:bg-green-700" : "bg-black hover:bg-gray-800"
           }`}
         >
-          {uploading ? (
-            <>
-              <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
-              Guardando...
-            </>
-          ) : editMode ? (
-            <>
-              <FaSave />
-              Guardar Cambios
-            </>
-          ) : (
-            <>
-              <FaEdit />
-              Editar Perfil
-            </>
-          )}
+          {editMode ? <FaSave /> : <FaEdit />}
+          {editMode ? "Guardar Cambios" : "Editar Perfil"}
         </button>
       </div>
 
-      {message && (
-        <p className={`mb-4 text-center text-sm ${message.includes("Error") ? "text-red-600" : "text-green-600"}`}>
-          {message}
-        </p>
-      )}
+      {message && <p className="mb-4 text-center text-sm text-blue-600">{message}</p>}
 
       <div className="bg-white rounded-lg shadow p-6 mb-6">
         <div className="flex flex-col sm:flex-row items-center sm:items-start gap-4">
-          <div className="w-20 h-20 bg-gray-200 rounded-full overflow-hidden relative">
-            {uploading && (
-              <div className="absolute inset-0 bg-black bg-opacity-50 flex items-center justify-center">
-                <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-white"></div>
-              </div>
-            )}
+          <div className="relative w-24 h-24 rounded-full overflow-hidden bg-gray-200">
             {avatarUrl ? (
-              <img src={avatarUrl} alt="Avatar" className="object-cover w-full h-full" />
+              <img src={avatarUrl + `?t=${Date.now()}`} alt="avatar" className="w-full h-full object-cover" />
             ) : (
-              <div className="w-full h-full flex items-center justify-center text-3xl text-gray-600">
+              <div className="flex items-center justify-center w-full h-full text-3xl text-gray-500">
                 <FaUser />
               </div>
             )}
+            {editMode && (
+              <button
+                onClick={() => fileInputRef.current?.click()}
+                className="absolute bottom-0 right-0 bg-black text-white p-1 rounded-full"
+              >
+                <FaImage size={14} />
+              </button>
+            )}
+            <input
+              type="file"
+              accept="image/*"
+              ref={fileInputRef}
+              onChange={handleUpload}
+              hidden
+            />
           </div>
           <div className="text-center sm:text-left">
             <h2 className="text-2xl font-semibold">{profile.full_name || "-"}</h2>
@@ -260,114 +221,77 @@ export default function OwnerProfile() {
       <div className="bg-white rounded-lg shadow p-6 mb-6">
         <h3 className="text-lg font-semibold mb-4">Información de Contacto</h3>
         <div className="grid sm:grid-cols-2 gap-4 text-gray-700">
-          <label className="block">
-            <span className="text-sm text-gray-600">Nombre</span>
+          <div>
+            <label className="text-sm font-medium flex items-center gap-2">
+              <FaEnvelope /> Correo electrónico
+            </label>
             {editMode ? (
-              <input
-                name="full_name"
-                value={formData.full_name}
-                onChange={handleChange}
-                className="border rounded px-2 py-1 w-full"
-              />
+              <input name="email" value={formData.email} onChange={handleChange} className="border rounded px-2 py-1 w-full" />
             ) : (
-              <div className="flex items-center"><FaUser className="mr-2" /> {profile.full_name || "-"}</div>
+              profile.email || "-"
             )}
-          </label>
-
-          <label className="block">
-            <span className="text-sm text-gray-600">Email</span>
+          </div>
+          <div>
+            <label className="text-sm font-medium flex items-center gap-2">
+              <FaPhone /> Teléfono
+            </label>
             {editMode ? (
-              <input
-                name="email"
-                value={formData.email}
-                onChange={handleChange}
-                className="border rounded px-2 py-1 w-full"
-              />
+              <input name="phone" value={formData.phone} onChange={handleChange} className="border rounded px-2 py-1 w-full" />
             ) : (
-              <div className="flex items-center"><FaEnvelope className="mr-2" /> {profile.email || "-"}</div>
+              profile.phone || "-"
             )}
-          </label>
-
-          <label className="block">
-            <span className="text-sm text-gray-600">Teléfono</span>
+          </div>
+          <div>
+            <label className="text-sm font-medium flex items-center gap-2">
+              <FaIdCard /> RUT
+            </label>
             {editMode ? (
-              <input
-                name="phone"
-                value={formData.phone}
-                onChange={handleChange}
-                className="border rounded px-2 py-1 w-full"
-              />
+              <input name="rut" value={formData.rut} onChange={handleChange} className="border rounded px-2 py-1 w-full" />
             ) : (
-              <div className="flex items-center"><FaPhone className="mr-2" /> {profile.phone || "-"}</div>
+              profile.rut || "-"
             )}
-          </label>
+          </div>
+        </div>
+      </div>
 
-          <label className="block">
-            <span className="text-sm text-gray-600">RUT</span>
+      <div className="bg-white rounded-lg shadow p-6 mb-6">
+        <h3 className="text-lg font-semibold mb-4">Información Personal</h3>
+        <div className="grid sm:grid-cols-2 gap-4 text-gray-700">
+          <div>
+            <label className="text-sm font-medium flex items-center gap-2">
+              <FaUser /> Nombre completo
+            </label>
             {editMode ? (
-              <input
-                name="rut"
-                value={formData.rut}
-                onChange={handleChange}
-                className="border rounded px-2 py-1 w-full"
-              />
+              <input name="full_name" value={formData.full_name} onChange={handleChange} className="border rounded px-2 py-1 w-full" />
             ) : (
-              <div className="flex items-center"><FaIdCard className="mr-2" /> {profile.rut || "-"}</div>
+              profile.full_name || "-"
             )}
-          </label>
-
-          <label className="block">
-            <span className="text-sm text-gray-600">Fecha de Nacimiento</span>
+          </div>
+          <div>
+            <label className="text-sm font-medium flex items-center gap-2">
+              <FaCalendar /> Fecha de nacimiento
+            </label>
             {editMode ? (
-              <input
-                type="date"
-                name="birth_date"
-                value={formData.birth_date}
-                onChange={handleChange}
-                className="border rounded px-2 py-1 w-full"
-              />
+              <input type="date" name="birth_date" value={formData.birth_date} onChange={handleChange} className="border rounded px-2 py-1 w-full" />
             ) : (
-              <div className="flex items-center"><FaCalendar className="mr-2" /> {formatDate(profile.birth_date)}</div>
+              formatDate(profile.birth_date)
             )}
-          </label>
-
-          <label className="block">
-            <span className="text-sm text-gray-600">Género</span>
+          </div>
+          <div>
+            <label className="text-sm font-medium flex items-center gap-2">
+              <FaUser /> Género
+            </label>
             {editMode ? (
-              <select
-                name="gender"
-                value={formData.gender}
-                onChange={handleChange}
-                className="border rounded px-2 py-1 w-full"
-              >
+              <select name="gender" value={formData.gender} onChange={handleChange} className="border rounded px-2 py-1 w-full">
                 <option value="">Seleccionar</option>
                 <option value="Femenino">Femenino</option>
                 <option value="Masculino">Masculino</option>
                 <option value="Otro">Otro</option>
               </select>
             ) : (
-              <div className="flex items-center"><FaUser className="mr-2" /> {profile.gender || "-"}</div>
+              profile.gender || "-"
             )}
-          </label>
-
-          {editMode && (
-            <label className="block sm:col-span-2">
-              <span className="text-sm text-gray-600">Foto de perfil</span>
-              <input
-                type="file"
-                name="avatar"
-                accept="image/*"
-                onChange={handleChange}
-                disabled={uploading}
-                className="mt-1 block w-full rounded border border-gray-300 px-3 py-2 disabled:opacity-50 disabled:cursor-not-allowed"
-              />
-              {avatarFile && (
-                <p className="mt-1 text-xs text-gray-500">
-                  Archivo seleccionado: {avatarFile.name}
-                </p>
-              )}
-            </label>
-          )}
+          </div>
         </div>
       </div>
     </div>
