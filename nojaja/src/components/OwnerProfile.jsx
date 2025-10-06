@@ -1,3 +1,4 @@
+// src/components/OwnerProfile.jsx
 import { useEffect, useState, useRef } from "react";
 import { supabase } from "../supabaseClient";
 import { useAuth } from "../context/AuthContext";
@@ -22,9 +23,75 @@ export default function OwnerProfile() {
   const [uploading, setUploading] = useState(false);
   const fileInputRef = useRef(null);
 
+  // Validaciones
+  const [errors, setErrors] = useState({});
+
   const avatarUrl = profile?.avatar_url
     ? `https://owrosyqgjlelskjhcmbb.supabase.co/storage/v1/object/public/owners/${profile.avatar_url}`
     : null;
+
+  // ==========================
+  // Validaciones
+  const formatRut = (value) => {
+    const cleaned = value.replace(/[^0-9kK]/g, "");
+    if (cleaned.length === 0) return "";
+    const body = cleaned.slice(0, -1);
+    const dv = cleaned.slice(-1).toUpperCase();
+    if (body.length <= 1) return cleaned;
+    const formattedBody = body.replace(/\B(?=(\d{3})+(?!\d))/g, ".");
+    return `${formattedBody}-${dv}`;
+  };
+
+  const validateRut = (rut) => {
+    const cleanRut = rut.replace(/[^0-9kK]/g, "");
+    if (cleanRut.length < 2) return false;
+    const body = cleanRut.slice(0, -1);
+    const dv = cleanRut.slice(-1).toUpperCase();
+    let sum = 0;
+    let multiplier = 2;
+    for (let i = body.length - 1; i >= 0; i--) {
+      sum += parseInt(body[i]) * multiplier;
+      multiplier = multiplier === 7 ? 2 : multiplier + 1;
+    }
+    const expectedDv = 11 - (sum % 11);
+    let calculatedDv;
+    if (expectedDv === 11) calculatedDv = "0";
+    else if (expectedDv === 10) calculatedDv = "K";
+    else calculatedDv = expectedDv.toString();
+    return dv === calculatedDv;
+  };
+
+  const normalizePhone = (value) => {
+    const only = (value || "").replace(/\D/g, "");
+    let local = only;
+    if (only.startsWith("569")) local = only.slice(3);
+    else if (only.startsWith("56")) local = only.slice(2);
+    if (local.startsWith("9")) local = local.slice(1);
+    return local.slice(0, 8);
+  };
+
+  const formatPhone = (local8) => {
+    const d = (local8 || "").replace(/\D/g, "").slice(0, 8);
+    const a = d.slice(0, 4);
+    const b = d.slice(4, 8);
+    if (!d) return "";
+    if (d.length <= 4) return `+56 9 ${a}`;
+    return `+56 9 ${a} ${b}`;
+  };
+
+  const calculateAge = (dateStr) => {
+    if (!dateStr) return 0;
+    const today = new Date();
+    const birth = new Date(dateStr);
+    let age = today.getFullYear() - birth.getFullYear();
+    const m = today.getMonth() - birth.getMonth();
+    if (m < 0 || (m === 0 && today.getDate() < birth.getDate())) {
+      age--;
+    }
+    return age;
+  };
+
+  // ==========================
 
   useEffect(() => {
     const fetchProfile = async () => {
@@ -68,10 +135,42 @@ export default function OwnerProfile() {
 
   const handleChange = (e) => {
     const { name, value } = e.target;
+
+    // RUT: aplicar formato al escribir
+    if (name === "rut") {
+      const formatted = formatRut(value);
+      setFormData((prev) => ({ ...prev, [name]: formatted }));
+      return;
+    }
+
+    // Teléfono: limpiar y guardar
+    if (name === "phone") {
+      const cleaned = normalizePhone(value);
+      setFormData((prev) => ({ ...prev, [name]: cleaned }));
+      return;
+    }
+
     setFormData((prev) => ({ ...prev, [name]: value }));
   };
 
+  const validateBeforeSave = () => {
+    const newErrors = {};
+    if (formData.rut && !validateRut(formData.rut)) {
+      newErrors.rut = "RUT inválido";
+    }
+    if (formData.phone && formData.phone.length !== 8) {
+      newErrors.phone = "El teléfono debe tener 8 dígitos locales";
+    }
+    if (formData.birth_date && calculateAge(formData.birth_date) < 18) {
+      newErrors.birth_date = "Debes tener al menos 18 años";
+    }
+    setErrors(newErrors);
+    return Object.keys(newErrors).length === 0;
+  };
+
   const handleSave = async () => {
+    if (!validateBeforeSave()) return;
+
     try {
       setMessage("");
 
@@ -140,7 +239,6 @@ export default function OwnerProfile() {
       return;
     }
 
-    // actualiza la url del avatar en el estado local
     setProfile((prev) => ({ ...prev, avatar_url: filePath }));
     setFormData((prev) => ({ ...prev, avatar_url: filePath }));
     setUploading(false);
@@ -154,14 +252,6 @@ export default function OwnerProfile() {
       month: "2-digit",
       year: "numeric",
     });
-  };
-
-  const calculateAge = (dateStr) => {
-    if (!dateStr) return "-";
-    const birth = new Date(dateStr);
-    const ageDifMs = Date.now() - birth.getTime();
-    const ageDate = new Date(ageDifMs);
-    return Math.abs(ageDate.getUTCFullYear() - 1970);
   };
 
   if (loading) return <p className="text-center mt-10">Cargando perfil...</p>;
@@ -213,7 +303,6 @@ export default function OwnerProfile() {
           <div className="text-center sm:text-left">
             <h2 className="text-2xl font-semibold">{profile.full_name || "-"}</h2>
             <p className="text-sm text-gray-500">Dueño de Mascota</p>
-            <p className="text-sm text-gray-500">{calculateAge(profile.birth_date)} años</p>
           </div>
         </div>
       </div>
@@ -236,9 +325,12 @@ export default function OwnerProfile() {
               <FaPhone /> Teléfono
             </label>
             {editMode ? (
-              <input name="phone" value={formData.phone} onChange={handleChange} className="border rounded px-2 py-1 w-full" />
+              <>
+                <input name="phone" value={formatPhone(formData.phone)} onChange={handleChange} className="border rounded px-2 py-1 w-full" />
+                {errors.phone && <p className="text-xs text-red-600 mt-1">{errors.phone}</p>}
+              </>
             ) : (
-              profile.phone || "-"
+              formatPhone(profile.phone) || "-"
             )}
           </div>
           <div>
@@ -246,7 +338,10 @@ export default function OwnerProfile() {
               <FaIdCard /> RUT
             </label>
             {editMode ? (
-              <input name="rut" value={formData.rut} onChange={handleChange} className="border rounded px-2 py-1 w-full" />
+              <>
+                <input name="rut" value={formData.rut} onChange={handleChange} className="border rounded px-2 py-1 w-full" />
+                {errors.rut && <p className="text-xs text-red-600 mt-1">{errors.rut}</p>}
+              </>
             ) : (
               profile.rut || "-"
             )}
@@ -272,7 +367,10 @@ export default function OwnerProfile() {
               <FaCalendar /> Fecha de nacimiento
             </label>
             {editMode ? (
-              <input type="date" name="birth_date" value={formData.birth_date} onChange={handleChange} className="border rounded px-2 py-1 w-full" />
+              <>
+                <input type="date" name="birth_date" value={formData.birth_date} onChange={handleChange} className="border rounded px-2 py-1 w-full" />
+                {errors.birth_date && <p className="text-xs text-red-600 mt-1">{errors.birth_date}</p>}
+              </>
             ) : (
               formatDate(profile.birth_date)
             )}
