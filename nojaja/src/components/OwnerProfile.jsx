@@ -326,7 +326,18 @@ export default function OwnerProfile() {
             </label>
             {editMode ? (
               <>
-                <input name="phone" value={formatPhone(formData.phone)} onChange={handleChange} className="border rounded px-2 py-1 w-full" />
+                <input
+                  name="phone"
+                  type="tel"
+                  value={formatPhone(formData.phone)}
+                  onChange={(e) =>
+                    setFormData((prev) => ({
+                      ...prev,
+                      phone: normalizePhone(e.target.value),
+                    }))
+                  }
+                  className="border rounded px-2 py-1 w-full"
+                />
                 {errors.phone && <p className="text-xs text-red-600 mt-1">{errors.phone}</p>}
               </>
             ) : (
