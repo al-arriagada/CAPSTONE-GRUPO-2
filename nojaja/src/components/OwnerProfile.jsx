@@ -12,6 +12,8 @@ import {
   FaSave,
   FaImage,
 } from "react-icons/fa";
+import { normalizeRut } from "../services/profile";
+
 
 export default function OwnerProfile() {
   const { user } = useAuth();
@@ -33,13 +35,14 @@ export default function OwnerProfile() {
   // ==========================
   // Validaciones
   const formatRut = (value) => {
-    const cleaned = value.replace(/[^0-9kK]/g, "");
-    if (cleaned.length === 0) return "";
-    const body = cleaned.slice(0, -1);
-    const dv = cleaned.slice(-1).toUpperCase();
-    if (body.length <= 1) return cleaned;
-    const formattedBody = body.replace(/\B(?=(\d{3})+(?!\d))/g, ".");
-    return `${formattedBody}-${dv}`;
+    const cleaned = (value || "").replace(/[^0-9kK]/g, "").toUpperCase();
+    const capped = cleaned.slice(0, 9);           // <-- evita exceder el largo
+    if (capped.length <= 1) return capped;        // mientras escribe los 1ros chars
+
+    const body = capped.slice(0, -1);             // 1..8 dígitos
+    const dv   = capped.slice(-1);                // 1 dígito o K
+    const withDots = body.replace(/\B(?=(\d{3})+(?!\d))/g, ".");
+    return `${withDots}-${dv}`;                   // siempre con guion
   };
 
   const validateRut = (rut) => {
@@ -61,13 +64,13 @@ export default function OwnerProfile() {
     return dv === calculatedDv;
   };
 
-  const normalizePhone = (value) => {
-    const only = (value || "").replace(/\D/g, "");
-    let local = only;
-    if (only.startsWith("569")) local = only.slice(3);
-    else if (only.startsWith("56")) local = only.slice(2);
-    if (local.startsWith("9")) local = local.slice(1);
-    return local.slice(0, 8);
+  const formatRutDisplay = (rut) => {
+    const cleaned = (rut || "").replace(/[^0-9kK]/g, "").toUpperCase();
+    if (cleaned.length < 2) return "";
+    const body = cleaned.slice(0, -1);
+    const dv = cleaned.slice(-1);
+    const withDots = body.replace(/\B(?=(\d{3})+(?!\d))/g, ".");
+    return `${withDots}-${dv}`;
   };
 
 
@@ -195,16 +198,17 @@ export default function OwnerProfile() {
 
   const handleSave = async () => {
     if (!validateBeforeSave()) return;
+    const rutToSave = normalizeRut(formData.rut).compact || null;
 
     try {
       setMessage("");
-      const normalizeRutPlain = (v) => (v || "").replace(/[^0-9kK]/g, "").toUpperCase();
+      
       const { error: appUserError } = await supabase
         .schema("petcare")
         .from("app_user")
         .update({
           full_name: formData.full_name,
-          rut: normalizeRutPlain(formData.rut),
+          rut: rutToSave,
           email: formData.email,
           birth_date: formData.birth_date,
           gender: formData.gender,
@@ -367,11 +371,11 @@ export default function OwnerProfile() {
             </label>
             {editMode ? (
               <>
-                <input name="rut" value={formData.rut} onChange={handleChange} className="border rounded px-2 py-1 w-full" />
+                <input name="rut" value={formData.rut} onChange={handleChange} className="border rounded px-2 py-1 w-full" maxLength={12} />
                 {errors.rut && <p className="text-xs text-red-600 mt-1">{errors.rut}</p>}
               </>
             ) : (
-              profile.rut || "-"
+              formatRutDisplay(profile.rut) || "-"
             )}
           </div>
         </div>
