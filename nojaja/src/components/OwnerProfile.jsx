@@ -92,7 +92,30 @@ export default function OwnerProfile() {
     return age;
   };
 
+    // De E.164 o lo que venga -> 8 dígitos locales (CL móvil)
+  const fromAnyToLocal8 = (value) => {
+    const only = (value || "").replace(/\D/g, "");
+    // +56 9 XXXXXXXX
+    if (only.startsWith("569")) return only.slice(3, 11);    // toma los 8 que siguen
+    if (only.startsWith("56")) {
+      let rest = only.slice(2);
+      if (rest.startsWith("9")) rest = rest.slice(1);
+      return rest.slice(0, 8);
+    }
+    if (only.startsWith("9")) return only.slice(1, 9);       // "9XXXXXXXX"
+    return only.slice(-8);                                    // fallback: últimos 8
+  };
+
+  // De 8 locales -> E.164 (+569XXXXXXXX), o null si no está completo
+  const toE164ClMobile = (local8) => {
+    const d = (local8 || "").replace(/\D/g, "");
+    return d.length === 8 ? `+569${d}` : null;
+  };
+
   // ==========================
+
+
+  
 
   useEffect(() => {
     const fetchProfile = async () => {
@@ -100,12 +123,14 @@ export default function OwnerProfile() {
         if (!user) return;
 
         const { data: appUser } = await supabase
+          .schema("petcare")
           .from("app_user")
           .select("*")
           .eq("user_id", user.id)
           .single();
 
         const { data: userPii } = await supabase
+          .schema("petcare")
           .from("user_pii")
           .select("phone")
           .eq("user_id", user.id)
@@ -116,7 +141,7 @@ export default function OwnerProfile() {
           full_name: appUser?.full_name ?? "",
           rut: appUser?.rut ?? "",
           email: appUser?.email ?? "",
-          phone: userPii?.phone ?? "",
+          phone: fromAnyToLocal8(userPii?.phone ?? ""),
           birth_date: appUser?.birth_date ?? "",
           gender: appUser?.gender ?? "",
           avatar_url: appUser?.avatar_url ?? null,
@@ -146,8 +171,7 @@ export default function OwnerProfile() {
 
     // Teléfono: limpiar y guardar
     if (name === "phone") {
-      const cleaned = normalizePhone(value);
-      setFormData((prev) => ({ ...prev, [name]: cleaned }));
+      setFormData((prev) => ({ ...prev, phone: fromAnyToLocal8(value) }));
       return;
     }
 
@@ -176,6 +200,7 @@ export default function OwnerProfile() {
       setMessage("");
 
       const { error: appUserError } = await supabase
+        .schema("petcare")
         .from("app_user")
         .update({
           full_name: formData.full_name,
@@ -187,13 +212,16 @@ export default function OwnerProfile() {
         .eq("user_id", user.id);
 
       if (appUserError) throw appUserError;
+      const phoneE164 = toE164ClMobile(formData.phone); // "+569XXXXXXXX" o null si incompleto
+
 
       const { error: piiError } = await supabase
+        .schema("petcare")
         .from("user_pii")
         .upsert(
           {
             user_id: user.id,
-            phone: formData.phone,
+            phone: phoneE164,
           },
           { onConflict: "user_id" }
         );
@@ -326,7 +354,7 @@ export default function OwnerProfile() {
             </label>
             {editMode ? (
               <>
-                <input name="phone" value={formatPhone(formData.phone)} onChange={handleChange} className="border rounded px-2 py-1 w-full" />
+                <input name="phone" type="tel" inputMode="numeric"  value={formatPhone(formData.phone)} onChange={handleChange} className="border rounded px-2 py-1 w-full" />
                 {errors.phone && <p className="text-xs text-red-600 mt-1">{errors.phone}</p>}
               </>
             ) : (
