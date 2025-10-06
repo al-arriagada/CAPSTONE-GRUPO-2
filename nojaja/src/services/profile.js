@@ -6,13 +6,7 @@ export function onlyDigits(str = "") {
   return (str || "").replace(/\D+/g, "");
 }
 
-/** 
- * Normaliza un RUT chileno:
- * - Saca puntos
- * - DV en mayúscula
- * - Formato "XXXXXXXX-D" (con guion)
- * Retorna { compact, formatted } (ambos iguales aquí, deja preparado por si quieres formato con puntos)
- */
+/** Normaliza RUT a "XXXXXXXX-D" (sin puntos, DV en mayúscula) */
 export function normalizeRut(rut = "") {
   const clean = (rut || "").replace(/[^0-9kK]/g, "");
   if (clean.length < 2) return { compact: "", formatted: "" };
@@ -22,124 +16,125 @@ export function normalizeRut(rut = "") {
   return { compact, formatted: compact };
 }
 
+/** De cualquier formato → E.164 chileno (+569XXXXXXXX) o null si incompleto */
+export function normalizePhoneToE164CL(value = "") {
+  const d = onlyDigits(value);
+  let local = d;
+  if (d.startsWith("569")) local = d.slice(3);
+  else if (d.startsWith("56")) {
+    local = d.slice(2);
+    if (local.startsWith("9")) local = local.slice(1);
+  } else if (d.startsWith("9")) local = d.slice(1);
+  local = (local || "").slice(0, 8);
+  return local.length === 8 ? `+569${local}` : null;
+}
+
 /**
- * Upsert del perfil en app_user + user_pii usando datos de auth.user y/o overrides del formulario.
- * - user: objeto devuelto por supabase.auth.getUser() / onAuthStateChange
- * - overrides: { full_name, rut, birth_date, gender, comuna_id, address_line, phone, email }
+ * Upsert de perfil usando auth.user + overrides (si necesitas usarlo manualmente).
+ * NO lo llames desde AuthContext al iniciar sesión (ver ensureProfileOnAuth abajo).
  */
 export async function upsertAppUserFromAuthUser(user, overrides = {}) {
-  if (!user?.id) {
-    throw new Error("No hay usuario autenticado para crear perfil.");
-  }
-
-  // fuente: overrides -> metadata -> auth fields
+  if (!user?.id) throw new Error("No hay usuario autenticado para crear/actualizar perfil.");
   const meta = user.user_metadata || {};
-  const full_name =
-    overrides.full_name ??
-    meta.full_name ??
-    meta.name ??
-    null;
 
-  const email =
-    overrides.email ??
-    user.email ??
-    null;
-
-  const birth_date =
-    overrides.birth_date ??
-    meta.birth_date ??
-    null; // YYYY-MM-DD
-
-  const gender =
-    overrides.gender ??
-    meta.gender ??
-    null; // ej. male | female | other
-
-  const comuna_id =
-    overrides.comuna_id ??
-    meta.comuna_id ??
-    null;
-
-  const { compact: rutCompact } = normalizeRut(
-    overrides.rut ?? meta.rut ?? ""
-  );
+  const { compact: rutCompact } = normalizeRut(overrides.rut ?? meta.rut ?? "");
+  const phoneE164 = normalizePhoneToE164CL(overrides.phone ?? meta.phone ?? "");
 
   const appUserRow = {
     user_id: user.id,
-    full_name,
-    email,        // si tu tabla app_user tiene columna email (CITEXT)
-    rut: rutCompact || null,  // si tienes columna RUT en app_user; si la tienes única, capturamos duplicados
-    birth_date: birth_date || null, // si tu app_user tiene birth_date (en tu screenshot sí)
-    gender: gender || null,
-    comuna_id: comuna_id || null,
+    full_name: overrides.full_name ?? meta.full_name ?? meta.name ?? null,
+    email: overrides.email ?? user.email ?? null,
+    rut: rutCompact || null,
+    birth_date: overrides.birth_date ?? meta.birth_date ?? null,
+    gender: overrides.gender ?? meta.gender ?? null,
+    comuna_id: overrides.comuna_id ?? meta.comuna_id ?? null,
     updated_at: new Date().toISOString(),
   };
+  Object.keys(appUserRow).forEach((k) => appUserRow[k] === undefined && delete appUserRow[k]);
 
-  // Quita claves con undefined (evita problemas con PostgREST al hacer upsert parcial)
-  Object.keys(appUserRow).forEach((k) => {
-    if (appUserRow[k] === undefined) delete appUserRow[k];
-  });
+  const { data: appUser, error } = await supabase
+    .schema("petcare")
+    .from("app_user")
+    .upsert(appUserRow, { onConflict: "user_id" })
+    .select("*")
+    .single();
 
-  // 1) upsert app_user
-  let appUser;
-  {
-    const { data, error } = await supabase
-      .schema("petcare")
-      .from("app_user")
-      .upsert(appUserRow, { onConflict: "user_id" })
-      .select("*")
-      .single();
-
-    if (error) {
-      // Duplicado (Rut o email únicos)
-      if (error.code === "23505") {
-        // Según el nombre de tu constraint puedes personalizar el mensaje
-        if (String(error.message).toLowerCase().includes("rut")) {
-          throw new Error("El RUT ya está registrado en otra cuenta.");
-        }
-        if (String(error.message).toLowerCase().includes("email")) {
-          throw new Error("El correo ya está registrado en otra cuenta.");
-        }
-        throw new Error("Ya existe un perfil con esos datos únicos.");
-      }
-      throw error;
+  if (error) {
+    if (error.code === "23505") {
+      const msg = String(error.message || "").toLowerCase();
+      if (msg.includes("rut")) throw new Error("El RUT ya está registrado en otra cuenta.");
+      if (msg.includes("email")) throw new Error("El correo ya está registrado en otra cuenta.");
+      throw new Error("Ya existe un perfil con datos únicos en conflicto.");
     }
-    appUser = data;
+    throw error;
   }
 
-  // 2) upsert user_pii (dirección / teléfono)
   const pii = {
     user_id: user.id,
     address_line: (overrides.address_line ?? meta.address_line ?? null) || null,
-    phone: (overrides.phone ?? meta.phone ?? null)
-      ? onlyDigits(overrides.phone ?? meta.phone)
-      : null,
+    phone: phoneE164, // guardamos en E.164 o null
     updated_at: new Date().toISOString(),
   };
 
-  // Si no tienes fila previa, upsert crea; si existe, actualiza
   const { error: piiError } = await supabase
     .schema("petcare")
     .from("user_pii")
     .upsert(pii, { onConflict: "user_id" });
 
-  if (piiError) {
-    // No es crítico para bloquear al usuario, pero conviene reportar
-    console.warn("upsert user_pii error:", piiError);
-  }
+  if (piiError) console.warn("upsert user_pii error:", piiError);
 
   return appUser;
 }
 
 /**
- * Helper para usar en AuthContext al detectar sesión:
- * Asegura que exista un perfil mínimo con full_name/email.
+ * ⚠️ Usar en AuthContext al detectar sesión:
+ * Crea app_user (y opcional user_pii) SOLO si no existen. NO sobreescribe.
  */
-export async function ensureProfileOnAuth(user) {
-  try {
-    await upsertAppUserFromAuthUser(user);
-  } catch (e) {
-    // Si falla por duplicados de rut/email y no tienes esos campos en metadata, no bloquees la app
-    console.warn("ensureProfileOnAuth:", e?.message || e);
+export async function ensureProfileOnAuth(authUser) {
+  if (!authUser?.id) return;
+
+  // ¿Ya existe perfil?
+  const { data: exists, error: selErr } = await supabase
+    .schema("petcare")
+    .from("app_user")
+    .select("user_id")
+    .eq("user_id", authUser.id)
+    .maybeSingle();
+
+  if (selErr) {
+    console.warn("ensureProfileOnAuth select:", selErr?.message || selErr);
+    return;
+  }
+  if (exists) return; // ✅ no tocar perfiles existentes
+
+  const meta = authUser.user_metadata || {};
+  const { compact: rutCompact } = normalizeRut(meta.rut ?? "");
+  const base = {
+    user_id: authUser.id,
+    email: authUser.email ?? null,
+    full_name: meta.full_name ?? meta.name ?? null,
+    birth_date: meta.birth_date ?? null,
+    gender: meta.gender ?? null,
+    rut: rutCompact || null,
+  };
+
+  const { error: insErr } = await supabase
+    .schema("petcare")
+    .from("app_user")
+    .insert([base]);
+
+  if (insErr) {
+    console.warn("ensureProfileOnAuth insert app_user:", insErr?.message || insErr);
+    return;
+  }
+
+  // Crea user_pii solo si hay algo útil (p. ej. teléfono)
+  const phoneE164 = normalizePhoneToE164CL(meta.phone ?? "");
+  if (phoneE164) {
+    await supabase
+      .schema("petcare")
+      .from("user_pii")
+      .upsert({ user_id: authUser.id, phone: phoneE164 }, { onConflict: "user_id" })
+      .catch((e) => console.warn("ensureProfileOnAuth upsert user_pii:", e?.message || e));
   }
 }

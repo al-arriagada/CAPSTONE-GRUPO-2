@@ -198,13 +198,13 @@ export default function OwnerProfile() {
 
     try {
       setMessage("");
-
+      const normalizeRutPlain = (v) => (v || "").replace(/[^0-9kK]/g, "").toUpperCase();
       const { error: appUserError } = await supabase
         .schema("petcare")
         .from("app_user")
         .update({
           full_name: formData.full_name,
-          rut: formData.rut,
+          rut: normalizeRutPlain(formData.rut),
           email: formData.email,
           birth_date: formData.birth_date,
           gender: formData.gender,
