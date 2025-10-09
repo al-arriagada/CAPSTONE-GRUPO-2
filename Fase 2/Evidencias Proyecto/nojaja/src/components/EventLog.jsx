@@ -1,8 +1,13 @@
 import { useState, useEffect } from "react";
 import { supabase } from "../supabaseClient";
 import { useAuth } from "../context/AuthContext";
+import { useParams } from "react-router-dom";
 
-export default function EventLog({ petId }) {
+
+
+export default function EventLog({ petId: propPetId  }) {
+  const { id } = useParams();
+  const petId = propPetId || id;  // 👈 toma el id de la URL
   const { user } = useAuth();
   const [events, setEvents] = useState([]);
   const [eventTypes, setEventTypes] = useState([]);
@@ -10,6 +15,7 @@ export default function EventLog({ petId }) {
   const [showForm, setShowForm] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
+  
 
   const [formData, setFormData] = useState({
     user_id: "",
