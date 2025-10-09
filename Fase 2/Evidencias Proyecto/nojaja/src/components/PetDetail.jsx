@@ -25,6 +25,13 @@ export default function PetDetail() {
   const [sexes, setSexes] = useState([]);
   const [origins, setOrigins] = useState([]);
   const [statuses, setStatuses] = useState([]);
+  const [routines, setRoutines] = useState([]);
+  const [events, setEvents] = useState([]);
+  const [selectedDate, setSelectedDate] = useState(null);
+  const [dayEvents, setDayEvents] = useState([]);
+  const [showEventModal, setShowEventModal] = useState(false);
+
+
 
   const [formData, setFormData] = useState({
     name: "",
@@ -152,12 +159,24 @@ export default function PetDetail() {
       try {
         const o = await fetchOwnerContact(data.user_id);
         setOwner(o);
+        await loadRoutinesAndEvents(data.pet_id);
       } catch (e) {
         console.warn("No fue posible cargar owner/PII:", e?.message);
       }
     }
     setLoading(false);
   };
+
+  const loadRoutinesAndEvents = async (petId) => {
+    const [r, e] = await Promise.all([
+      supabase.schema("petcare").from("routine").select("*").eq("pet_id", petId),
+      supabase.schema("petcare").from("event").select("*").eq("pet_id", petId),
+    ]);
+
+    if (r.data) setRoutines(r.data);
+    if (e.data) setEvents(e.data);
+  };
+
 
   const calculateAge = (birthDate) => {
     if (!birthDate) return null;
@@ -172,9 +191,8 @@ export default function PetDetail() {
     }
 
     if (years === 0) return `${months} ${months === 1 ? "mes" : "meses"}`;
-    return `${years} ${years === 1 ? "año" : "años"}${
-      months > 0 ? ` y ${months} ${months === 1 ? "mes" : "meses"}` : ""
-    }`;
+    return `${years} ${years === 1 ? "año" : "años"}${months > 0 ? ` y ${months} ${months === 1 ? "mes" : "meses"}` : ""
+      }`;
   };
 
   const handleSave = async () => {
@@ -425,41 +443,37 @@ export default function PetDetail() {
               <div className="flex border-b">
                 <button
                   onClick={() => setActiveTab("id")}
-                  className={`flex-1 px-6 py-4 text-sm font-medium transition-colors ${
-                    activeTab === "id"
-                      ? "border-b-2 border-black text-black"
-                      : "text-gray-500 hover:text-gray-700"
-                  }`}
+                  className={`flex-1 px-6 py-4 text-sm font-medium transition-colors ${activeTab === "id"
+                    ? "border-b-2 border-black text-black"
+                    : "text-gray-500 hover:text-gray-700"
+                    }`}
                 >
                   ID
                 </button>
                 <button
                   onClick={() => setActiveTab("perfil")}
-                  className={`flex-1 px-6 py-4 text-sm font-medium transition-colors ${
-                    activeTab === "perfil"
-                      ? "border-b-2 border-black text-black"
-                      : "text-gray-500 hover:text-gray-700"
-                  }`}
+                  className={`flex-1 px-6 py-4 text-sm font-medium transition-colors ${activeTab === "perfil"
+                    ? "border-b-2 border-black text-black"
+                    : "text-gray-500 hover:text-gray-700"
+                    }`}
                 >
                   Perfil
                 </button>
                 <button
                   onClick={() => setActiveTab("historial")}
-                  className={`flex-1 px-6 py-4 text-sm font-medium transition-colors ${
-                    activeTab === "historial"
-                      ? "border-b-2 border-black text-black"
-                      : "text-gray-500 hover:text-gray-700"
-                  }`}
+                  className={`flex-1 px-6 py-4 text-sm font-medium transition-colors ${activeTab === "historial"
+                    ? "border-b-2 border-black text-black"
+                    : "text-gray-500 hover:text-gray-700"
+                    }`}
                 >
                   Historial médico
                 </button>
                 <button
                   onClick={() => setActiveTab("rutinas")}
-                  className={`flex-1 px-6 py-4 text-sm font-medium transition-colors ${
-                    activeTab === "rutinas"
-                      ? "border-b-2 border-black text-black"
-                      : "text-gray-500 hover:text-gray-700"
-                  }`}
+                  className={`flex-1 px-6 py-4 text-sm font-medium transition-colors ${activeTab === "rutinas"
+                    ? "border-b-2 border-black text-black"
+                    : "text-gray-500 hover:text-gray-700"
+                    }`}
                 >
                   Rutinas y eventos
                 </button>
@@ -613,12 +627,11 @@ export default function PetDetail() {
 
               {activeTab === "rutinas" && (
                 <div>
-                  <h3 className="text-xl font-semibold mb-6">
-                    Rutinas y Eventos
-                  </h3>
-                  <p className="text-gray-500">
-                    No hay rutinas o eventos registrados.
-                  </p>
+                  <h3 className="text-xl font-semibold mb-6">Rutinas y Eventos</h3>
+                  <div className="bg-gray-50 p-6 rounded-2xl border shadow-sm">
+                    <h4 className="text-lg font-medium mb-4">Calendario</h4>
+                    <Calendar routines={routines} events={events} />
+                  </div>
                 </div>
               )}
             </div>
@@ -710,8 +723,8 @@ export default function PetDetail() {
                   />
                 </EditField>
 
-                <EditField 
-                  label="Peso (kg)" 
+                <EditField
+                  label="Peso (kg)"
                   error={weightError}
                   helpText="Debe ser mayor a 0 y menor a 500 kg"
                 >
@@ -728,9 +741,8 @@ export default function PetDetail() {
                       });
                       validateWeight(e.target.value);
                     }}
-                    className={`w-full px-4 py-2 border rounded-xl ${
-                      weightError ? 'border-red-500 focus:ring-red-500' : ''
-                    }`}
+                    className={`w-full px-4 py-2 border rounded-xl ${weightError ? 'border-red-500 focus:ring-red-500' : ''
+                      }`}
                     placeholder="Ej: 25.5"
                   />
                 </EditField>
@@ -840,7 +852,7 @@ export default function PetDetail() {
         />
       </div>
     </div>
-    
+
   );
 }
 
@@ -937,9 +949,8 @@ function ConfirmDialog({
           <button
             onClick={onConfirm}
             disabled={!canConfirm}
-            className={`px-4 py-2 rounded-lg text-white disabled:opacity-50 ${
-              danger ? "bg-red-600 hover:bg-red-700" : "bg-black hover:bg-gray-800"
-            }`}
+            className={`px-4 py-2 rounded-lg text-white disabled:opacity-50 ${danger ? "bg-red-600 hover:bg-red-700" : "bg-black hover:bg-gray-800"
+              }`}
           >
             {confirmText}
           </button>
@@ -948,4 +959,170 @@ function ConfirmDialog({
     </div>
   );
 }
+
+function Calendar({ routines = [], events = [] }) {
+  const [today, setToday] = React.useState(new Date());
+  const [currentMonth, setCurrentMonth] = React.useState(today.getMonth());
+  const [currentYear, setCurrentYear] = React.useState(today.getFullYear());
+
+  React.useEffect(() => {
+    const interval = setInterval(() => setToday(new Date()), 60000);
+    return () => clearInterval(interval);
+  }, []);
+
+  const months = [
+    "Enero","Febrero","Marzo","Abril","Mayo","Junio",
+    "Julio","Agosto","Septiembre","Octubre","Noviembre","Diciembre"
+  ];
+
+  // 🧮 Calcula días correctamente cuando la semana empieza el lunes
+  const daysInMonth = new Date(currentYear, currentMonth + 1, 0).getDate();
+  let firstDay = new Date(currentYear, currentMonth, 1).getDay(); // 0 = domingo, 1 = lunes ...
+  firstDay = firstDay === 0 ? 6 : firstDay - 1; // 👉 convierte para que lunes sea 0
+
+  const prevMonth = () => {
+    if (currentMonth === 0) {
+      setCurrentMonth(11);
+      setCurrentYear((y) => y - 1);
+    } else {
+      setCurrentMonth((m) => m - 1);
+    }
+  };
+
+  const nextMonth = () => {
+    if (currentMonth === 11) {
+      setCurrentMonth(0);
+      setCurrentYear((y) => y + 1);
+    } else {
+      setCurrentMonth((m) => m + 1);
+    }
+  };
+
+  const handleMonthChange = (e) => setCurrentMonth(parseInt(e.target.value));
+  const handleYearChange = (e) => setCurrentYear(parseInt(e.target.value));
+
+  const calendarDays = [];
+  for (let i = 0; i < firstDay; i++) calendarDays.push(null);
+  for (let d = 1; d <= daysInMonth; d++) calendarDays.push(d);
+
+  const hasRoutine = (day) =>
+    routines.some((r) => {
+      const date = new Date(r.created_at);
+      return (
+        date.getDate() === day &&
+        date.getMonth() === currentMonth &&
+        date.getFullYear() === currentYear
+      );
+    });
+
+  const hasEvent = (day) =>
+    events.some((e) => {
+      const date = new Date(e.created_at);
+      return (
+        date.getDate() === day &&
+        date.getMonth() === currentMonth &&
+        date.getFullYear() === currentYear
+      );
+    });
+
+  // Años visibles (-5 / +5 desde el actual)
+  const years = Array.from({ length: 11 }, (_, i) => today.getFullYear() - 5 + i);
+
+  return (
+    <div className="text-center">
+      <div className="flex flex-wrap justify-between items-center mb-4 gap-3">
+        {/* Selector de mes/año y navegación */}
+        <div className="flex items-center gap-2">
+          <button
+            onClick={prevMonth}
+            className="px-3 py-1 border rounded-lg hover:bg-gray-100"
+          >
+            ←
+          </button>
+
+          <select
+            value={currentMonth}
+            onChange={handleMonthChange}
+            className="border rounded-lg px-2 py-1 text-sm"
+          >
+            {months.map((m, i) => (
+              <option key={m} value={i}>
+                {m}
+              </option>
+            ))}
+          </select>
+
+          <select
+            value={currentYear}
+            onChange={handleYearChange}
+            className="border rounded-lg px-2 py-1 text-sm"
+          >
+            {years.map((y) => (
+              <option key={y} value={y}>
+                {y}
+              </option>
+            ))}
+          </select>
+
+          <button
+            onClick={nextMonth}
+            className="px-3 py-1 border rounded-lg hover:bg-gray-100"
+          >
+            →
+          </button>
+        </div>
+
+        <span className="text-sm text-gray-500">
+          Hoy es{" "}
+          {today.toLocaleDateString("es-ES", {
+            weekday: "long",
+            day: "numeric",
+            month: "long",
+            year: "numeric",
+          })}
+        </span>
+      </div>
+
+      {/* Encabezado de días (semana inicia lunes) */}
+      <div className="grid grid-cols-7 gap-2 text-sm font-medium text-gray-600">
+        {["Lun", "Mar", "Mié", "Jue", "Vie", "Sáb", "Dom"].map((d) => (
+          <div key={d}>{d}</div>
+        ))}
+      </div>
+
+      {/* Días del calendario */}
+      <div className="grid grid-cols-7 gap-2 text-sm mt-1">
+        {calendarDays.map((day, i) => {
+          if (!day) return <div key={i} />;
+          const isToday =
+            day === today.getDate() &&
+            currentMonth === today.getMonth() &&
+            currentYear === today.getFullYear();
+
+          return (
+            <div
+              key={i}
+              className={`h-14 flex flex-col items-center justify-center rounded-lg border relative ${
+                isToday
+                  ? "bg-pink-500 text-white"
+                  : "bg-white text-gray-700"
+              }`}
+            >
+              <span>{day}</span>
+              <div className="absolute bottom-1 flex gap-1">
+                {hasRoutine(day) && (
+                  <span className="w-2 h-2 bg-blue-500 rounded-full"></span>
+                )}
+                {hasEvent(day) && (
+                  <span className="w-2 h-2 bg-green-500 rounded-full"></span>
+                )}
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
 
