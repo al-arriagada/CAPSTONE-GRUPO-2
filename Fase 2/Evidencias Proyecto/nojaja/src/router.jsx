@@ -13,6 +13,7 @@ import RedirectIfAuth from "./components/RedirectIfAuth.jsx";
 import PetForm from "./components/PetForm.jsx";
 import OwnerProfile from "./components/OwnerProfile.jsx";
 import PetDetail from "./components/PetDetail.jsx";      // ⬅️ NUEVO
+import EventoLog from "./components/EventLog.jsx";
 
 const router = createBrowserRouter([
   // Rutas públicas
@@ -84,6 +85,15 @@ const router = createBrowserRouter([
         ),
       },
       // aquí podrás agregar: citas, historial, etc.
+      {
+        path: "pets/:id/eventlog",
+        element: (
+          <ProtectedRoute>
+            <EventoLog /> {/* historial de eventos */}
+          </ProtectedRoute>
+        ),
+      },
+
     ],
   },
 

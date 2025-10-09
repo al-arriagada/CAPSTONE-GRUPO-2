@@ -85,12 +85,12 @@ export default function PetCard({ pet }) {
 
         {/* Acciones (no deben abrir el detalle del card) */}
         <div className="mt-4 flex gap-2">
-          <Link
-            to={`/app/pets/${pet_id}`} // detalle
-            onClick={stop}
-            className="rounded-xl border px-3 py-1.5 text-sm hover:bg-gray-50"
-          >
-            Ver historial
+         <Link
+          to={`/app/pets/${pet_id}/eventlog`} // historial (nuevo EventLog)
+          onClick={stop}
+          className="rounded-xl border px-3 py-1.5 text-sm hover:bg-gray-50"
+        >
+          Ver historial
           </Link>
           <Link
             to={`/app/pets/${pet_id}/appointments`} // citas
