@@ -30,8 +30,7 @@ export default function PetDetail() {
   const [selectedDate, setSelectedDate] = useState(null);
   const [dayEvents, setDayEvents] = useState([]);
   const [showEventModal, setShowEventModal] = useState(false);
-
-
+  const [eventTypes, setEventTypes] = useState([]);
 
   const [formData, setFormData] = useState({
     name: "",
@@ -101,6 +100,7 @@ export default function PetDetail() {
 
   useEffect(() => {
     loadCatalogs();
+    loadEventTypes();
   }, []);
 
   const loadCatalogs = async () => {
@@ -115,6 +115,21 @@ export default function PetDetail() {
     if (sx.data) setSexes(sx.data);
     if (or.data) setOrigins(or.data);
     if (st.data) setStatuses(st.data);
+  };
+
+  const loadEventTypes = async () => {
+    const { data, error } = await supabase
+      .schema("petcare")
+      .from("event_type_catalog")
+      .select("event_type_id, display_name")
+      .order("display_name", { ascending: true });
+
+    if (error) {
+      console.error("❌ Error cargando tipos de evento:", error);
+    } else {
+      console.log("✅ Tipos de evento cargados:", data);
+      setEventTypes(data || []);
+    }
   };
 
   useEffect(() => {
@@ -177,6 +192,31 @@ export default function PetDetail() {
     if (e.data) setEvents(e.data);
   };
 
+  const loadEventsByDate = async (petId, date) => {
+    const startOfDay = new Date(date);
+    startOfDay.setHours(0, 0, 0, 0);
+    const endOfDay = new Date(date);
+    endOfDay.setHours(23, 59, 59, 999);
+
+    const { data, error } = await supabase
+      .schema("petcare")
+      .from("event")
+      .select(`
+      *,
+      event_type_catalog(display_name),
+      vaccine_event(next_due_date)
+    `)
+      .eq("pet_id", petId)
+      .gte("ts", startOfDay.toISOString())
+      .lte("ts", endOfDay.toISOString())
+      .order("ts", { ascending: true });
+
+    if (error) {
+      console.error("Error cargando eventos:", error);
+      return [];
+    }
+    return data || [];
+  };
 
   const calculateAge = (birthDate) => {
     if (!birthDate) return null;
@@ -630,7 +670,16 @@ export default function PetDetail() {
                   <h3 className="text-xl font-semibold mb-6">Rutinas y Eventos</h3>
                   <div className="bg-gray-50 p-6 rounded-2xl border shadow-sm">
                     <h4 className="text-lg font-medium mb-4">Calendario</h4>
-                    <Calendar routines={routines} events={events} />
+                    <Calendar
+                      routines={routines}
+                      events={events}
+                      onDayClick={async (dayDate) => {
+                        const data = await loadEventsByDate(pet.pet_id, dayDate);
+                        setSelectedDate(dayDate);
+                        setDayEvents(data);
+                        setShowEventModal(true);
+                      }}
+                    />
                   </div>
                 </div>
               )}
@@ -851,6 +900,18 @@ export default function PetDetail() {
           onCancel={() => setShowArchiveModal(false)}
         />
       </div>
+      <EventModal
+        open={showEventModal}
+        date={selectedDate}
+        events={dayEvents}
+        onClose={() => setShowEventModal(false)}
+        petId={pet.pet_id}
+        eventTypes={eventTypes}
+        onEventAdded={async () => {
+          const refreshed = await loadEventsByDate(pet.pet_id, selectedDate);
+          setDayEvents(refreshed);
+        }}
+      />
     </div>
 
   );
@@ -960,7 +1021,7 @@ function ConfirmDialog({
   );
 }
 
-function Calendar({ routines = [], events = [] }) {
+function Calendar({ routines = [], events = [], onDayClick }) {
   const [today, setToday] = React.useState(new Date());
   const [currentMonth, setCurrentMonth] = React.useState(today.getMonth());
   const [currentYear, setCurrentYear] = React.useState(today.getFullYear());
@@ -971,14 +1032,13 @@ function Calendar({ routines = [], events = [] }) {
   }, []);
 
   const months = [
-    "Enero","Febrero","Marzo","Abril","Mayo","Junio",
-    "Julio","Agosto","Septiembre","Octubre","Noviembre","Diciembre"
+    "Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio",
+    "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre"
   ];
 
-  // 🧮 Calcula días correctamente cuando la semana empieza el lunes
   const daysInMonth = new Date(currentYear, currentMonth + 1, 0).getDate();
-  let firstDay = new Date(currentYear, currentMonth, 1).getDay(); // 0 = domingo, 1 = lunes ...
-  firstDay = firstDay === 0 ? 6 : firstDay - 1; // 👉 convierte para que lunes sea 0
+  let firstDay = new Date(currentYear, currentMonth, 1).getDay();
+  firstDay = firstDay === 0 ? 6 : firstDay - 1; // Semana empieza en lunes
 
   const prevMonth = () => {
     if (currentMonth === 0) {
@@ -1017,7 +1077,7 @@ function Calendar({ routines = [], events = [] }) {
 
   const hasEvent = (day) =>
     events.some((e) => {
-      const date = new Date(e.created_at);
+      const date = new Date(e.ts || e.created_at);
       return (
         date.getDate() === day &&
         date.getMonth() === currentMonth &&
@@ -1025,21 +1085,16 @@ function Calendar({ routines = [], events = [] }) {
       );
     });
 
-  // Años visibles (-5 / +5 desde el actual)
   const years = Array.from({ length: 11 }, (_, i) => today.getFullYear() - 5 + i);
 
   return (
     <div className="text-center">
+      {/* Encabezado */}
       <div className="flex flex-wrap justify-between items-center mb-4 gap-3">
-        {/* Selector de mes/año y navegación */}
         <div className="flex items-center gap-2">
-          <button
-            onClick={prevMonth}
-            className="px-3 py-1 border rounded-lg hover:bg-gray-100"
-          >
+          <button onClick={prevMonth} className="px-3 py-1 border rounded-lg hover:bg-gray-100">
             ←
           </button>
-
           <select
             value={currentMonth}
             onChange={handleMonthChange}
@@ -1051,7 +1106,6 @@ function Calendar({ routines = [], events = [] }) {
               </option>
             ))}
           </select>
-
           <select
             value={currentYear}
             onChange={handleYearChange}
@@ -1063,18 +1117,14 @@ function Calendar({ routines = [], events = [] }) {
               </option>
             ))}
           </select>
-
-          <button
-            onClick={nextMonth}
-            className="px-3 py-1 border rounded-lg hover:bg-gray-100"
-          >
+          <button onClick={nextMonth} className="px-3 py-1 border rounded-lg hover:bg-gray-100">
             →
           </button>
         </div>
 
         <span className="text-sm text-gray-500">
           Hoy es{" "}
-          {today.toLocaleDateString("es-ES", {
+          {today.toLocaleDateString("es-CL", {
             weekday: "long",
             day: "numeric",
             month: "long",
@@ -1083,7 +1133,7 @@ function Calendar({ routines = [], events = [] }) {
         </span>
       </div>
 
-      {/* Encabezado de días (semana inicia lunes) */}
+      {/* Encabezado de días */}
       <div className="grid grid-cols-7 gap-2 text-sm font-medium text-gray-600">
         {["Lun", "Mar", "Mié", "Jue", "Vie", "Sáb", "Dom"].map((d) => (
           <div key={d}>{d}</div>
@@ -1099,14 +1149,16 @@ function Calendar({ routines = [], events = [] }) {
             currentMonth === today.getMonth() &&
             currentYear === today.getFullYear();
 
+          const dateObj = new Date(currentYear, currentMonth, day);
+
           return (
             <div
               key={i}
-              className={`h-14 flex flex-col items-center justify-center rounded-lg border relative ${
-                isToday
-                  ? "bg-pink-500 text-white"
-                  : "bg-white text-gray-700"
-              }`}
+              onClick={() => onDayClick?.(dateObj)} // 👈 ejecuta callback al hacer clic
+              className={`cursor-pointer h-14 flex flex-col items-center justify-center rounded-lg border relative transition ${isToday
+                ? "bg-pink-500 text-white"
+                : "bg-white text-gray-700 hover:bg-gray-100"
+                }`}
             >
               <span>{day}</span>
               <div className="absolute bottom-1 flex gap-1">
@@ -1120,6 +1172,211 @@ function Calendar({ routines = [], events = [] }) {
             </div>
           );
         })}
+      </div>
+    </div>
+  );
+}
+
+function EventModal({ open, date, events, onClose, petId, eventTypes, onEventAdded }) {
+  const [newEvent, setNewEvent] = React.useState({
+    type_id: "",
+    details: "",
+    vaccine_next: "",
+  });
+  const [saving, setSaving] = React.useState(false);
+  const [error, setError] = React.useState("");
+  const [success, setSuccess] = React.useState("");
+
+  if (!open) return null;
+
+  const formattedDate = date?.toLocaleDateString("es-CL", {
+    weekday: "long",
+    day: "numeric",
+    month: "long",
+    year: "numeric",
+  });
+
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    setSaving(true);
+    setError("");
+    setSuccess("");
+
+    if (!newEvent.type_id) {
+      setError("Debes seleccionar un tipo de evento.");
+      setSaving(false);
+      return;
+    }
+
+    try {
+      // 1️⃣ Insertar evento principal
+      const { data: inserted, error: insertError } = await supabase
+        .schema("petcare")
+        .from("event")
+        .insert([
+          {
+            pet_id: petId,
+            e_type_id: newEvent.type_id,
+            ts: new Date(date).toISOString(),
+            details: newEvent.details || null,
+          },
+        ])
+        .select("event_id")
+        .maybeSingle();
+
+      if (insertError) throw insertError;
+
+      // 2️⃣ Si es tipo vacuna → crea registro en vaccine_event
+      const selectedType = eventTypes.find(
+        (t) => t.event_type_id === newEvent.type_id
+      );
+      const isVaccine = selectedType?.display_name
+        ?.toLowerCase()
+        .includes("vacuna");
+
+      if (isVaccine && newEvent.vaccine_next) {
+        await supabase
+          .schema("petcare")
+          .from("vaccine_event")
+          .insert([
+            {
+              event_id: inserted.event_id,
+              next_due_date: newEvent.vaccine_next,
+            },
+          ]);
+      }
+
+      setSuccess("Evento registrado exitosamente.");
+      setNewEvent({ type_id: "", details: "", vaccine_next: "" });
+
+      // 3️⃣ Refrescar lista de eventos del día
+      onEventAdded();
+    } catch (err) {
+      console.error(err);
+      setError("Ocurrió un error al registrar el evento.");
+    }
+
+    setSaving(false);
+  };
+
+  return (
+    <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50">
+      <div className="bg-white rounded-2xl shadow-xl w-full max-w-lg p-6 relative">
+        <button
+          onClick={onClose}
+          className="absolute top-3 right-3 text-gray-500 hover:text-gray-800"
+        >
+          ✕
+        </button>
+
+        <h3 className="text-lg font-semibold mb-2">
+          Eventos del {formattedDate}
+        </h3>
+
+        {/* Lista de eventos */}
+        {events.length === 0 ? (
+          <p className="text-gray-500 text-sm mt-4">No hay eventos registrados.</p>
+        ) : (
+          <ul className="space-y-4 mt-4 max-h-80 overflow-y-auto pr-2">
+            {events.map((ev) => (
+              <li key={ev.event_id} className="border rounded-xl p-4 bg-gray-50 text-left">
+                <p className="font-medium text-gray-800">
+                  {ev.event_type_catalog?.display_name || "Evento sin tipo"}
+                </p>
+                <p className="text-sm text-gray-600">
+                  {new Date(ev.ts).toLocaleTimeString("es-CL", {
+                    hour: "2-digit",
+                    minute: "2-digit",
+                  })}
+                </p>
+
+                {ev.details && (
+                  <p className="text-sm text-gray-700 mt-1">
+                    {typeof ev.details === "object"
+                      ? JSON.stringify(ev.details)
+                      : ev.details}
+                  </p>
+                )}
+
+                {ev.vaccine_event?.next_due_date && (
+                  <p className="text-xs text-green-600 mt-1">
+                    💉 Próxima dosis:{" "}
+                    {new Date(ev.vaccine_event.next_due_date).toLocaleDateString("es-CL")}
+                  </p>
+                )}
+              </li>
+            ))}
+          </ul>
+        )}
+
+        {/* Formulario de nuevo evento */}
+        <form onSubmit={handleSubmit} className="mt-6 pt-4 border-t">
+          <h4 className="text-sm font-medium mb-3">Registrar nuevo evento</h4>
+
+          {error && <p className="text-red-600 text-sm mb-2">{error}</p>}
+          {success && <p className="text-green-600 text-sm mb-2">{success}</p>}
+
+          <div className="space-y-3">
+            <select
+              value={newEvent.type_id}
+              onChange={(e) => setNewEvent({ ...newEvent, type_id: e.target.value })}
+              className="w-full border rounded-lg px-3 py-2 text-sm"
+            >
+              <option value="">Selecciona tipo de evento...</option>
+              {eventTypes.map((t) => (
+                <option key={t.event_type_id} value={t.event_type_id}>
+                  {t.display_name}
+                </option>
+              ))}
+            </select>
+
+            <textarea
+              value={newEvent.details}
+              onChange={(e) => setNewEvent({ ...newEvent, details: e.target.value })}
+              placeholder="Detalles del evento..."
+              className="w-full border rounded-lg px-3 py-2 text-sm"
+              rows={3}
+            />
+
+            {/* Solo si el tipo incluye “vacuna” */}
+            {eventTypes.find(
+              (t) =>
+                t.event_type_id === newEvent.type_id &&
+                t.display_name.toLowerCase().includes("vacuna")
+            ) && (
+                <div>
+                  <label className="block text-sm text-gray-700 mb-1">
+                    Próxima dosis (opcional)
+                  </label>
+                  <input
+                    type="date"
+                    value={newEvent.vaccine_next}
+                    onChange={(e) =>
+                      setNewEvent({ ...newEvent, vaccine_next: e.target.value })
+                    }
+                    className="w-full border rounded-lg px-3 py-2 text-sm"
+                  />
+                </div>
+              )}
+          </div>
+
+          <div className="mt-4 flex justify-end gap-2">
+            <button
+              type="button"
+              onClick={onClose}
+              className="px-4 py-2 border rounded-lg text-sm hover:bg-gray-50"
+            >
+              Cancelar
+            </button>
+            <button
+              type="submit"
+              disabled={saving}
+              className="px-4 py-2 bg-green-600 text-white rounded-lg text-sm hover:bg-green-700 disabled:opacity-50"
+            >
+              {saving ? "Guardando..." : "Guardar evento"}
+            </button>
+          </div>
+        </form>
       </div>
     </div>
   );
