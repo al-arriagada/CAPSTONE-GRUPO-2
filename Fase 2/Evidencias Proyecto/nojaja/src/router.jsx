@@ -14,35 +14,38 @@ import PetForm from "./components/PetForm.jsx";
 import OwnerProfile from "./components/OwnerProfile.jsx";
 import PetDetail from "./components/PetDetail.jsx";      // ⬅️ NUEVO
 import EventoLog from "./components/EventLog.jsx";
+import RedirectAuthHome from "./components/RedirectAuthHome.jsx";
+import ProtectedRouteByRole from "./components/ProtectedRouteByRole.jsx";
+import VetDashboard from "./components/vet/VetDashboard.jsx";
 
 const router = createBrowserRouter([
   // Rutas públicas
   {
     path: "/",
-    element: <PublicLayout />,
+    element: <RedirectAuthHome><PublicLayout /></RedirectAuthHome> ,
     children: [{ index: true, element: <HomePublic /> }],
   },
   {
     path: "/signin",
     element: (
-      <RedirectIfAuth>
+      <RedirectAuthHome>
         <Signin />
-      </RedirectIfAuth>
+      </RedirectAuthHome>
     ),
   },
   {
     path: "/signup",
     element: (
-      <RedirectIfAuth>
+      <RedirectAuthHome>
         <Signup />
-      </RedirectIfAuth>
+      </RedirectAuthHome>
     ),
   },
 
   // Rutas privadas (/app)
   {
     path: "/app",
-    element: <AppLayout />,
+    element: <ProtectedRouteByRole allowedRoles={["owner"]}> <AppLayout /> </ProtectedRouteByRole>,
     children: [
       {
         index: true,
@@ -93,10 +96,28 @@ const router = createBrowserRouter([
           </ProtectedRoute>
         ),
       },
-
     ],
   },
-
+  {
+    path: "/vet",
+    element: (
+      <ProtectedRouteByRole allowedRoles={["vet"]}>
+        <AppLayout />
+      </ProtectedRouteByRole>
+    ),
+    children: [
+      { index: true, element: <VetDashboard /> },
+            {
+        path: "profile",
+        element: (
+          <ProtectedRoute>
+            <OwnerProfile />
+          </ProtectedRoute>
+        ),
+      },
+      // { path: "pets/:petId", element: <VetPetDetail /> }, // cuando lo tengas
+    ],
+  },
   // Reset / Update Password
   { path: "/reset-password", element: <ResetPassword /> },
   { path: "/update-password", element: <UpdatePassword /> },

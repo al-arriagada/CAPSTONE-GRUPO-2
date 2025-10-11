@@ -8,48 +8,43 @@ const AuthContext = createContext(null);
 export const AuthProvider = ({ children }) => {
   const [user, setUser] = useState(null);
   const [loading, setLoading] = useState(true);
-
-  // Evita re-asegurar el mismo user en un mismo ciclo
   const lastEnsuredRef = useRef(null);
 
   useEffect(() => {
-    let ignore = false;
+    let cancelled = false;
 
-    const init = async () => {
-      const { data: { session }, error } = await supabase.auth.getSession();
-      if (error) {
-        console.error("getSession:", error);
-        if (!ignore) { setUser(null); setLoading(false); }
-        return;
+    // ⬇️ Failsafe: si algo se traba, suelta el loading en 2s
+    const failsafe = setTimeout(() => {
+      if (!cancelled) setLoading(false);
+    }, 2000);
+
+    // 1) Cargar sesión actual — NO bloquear la UI
+    (async () => {
+      try {
+        const { data, error } = await supabase.auth.getSession();
+        if (error) console.warn("getSession:", error);
+        if (!cancelled) {
+          setUser(data?.session?.user ?? null);
+        }
+      } finally {
+        if (!cancelled) setLoading(false); // siempre liberar
       }
+    })();
 
-      const u = session?.user ?? null;
-      if (!ignore) setUser(u);
-
-      // Solo crea el perfil si NO existe (no sobreescribe)
-      if (u && lastEnsuredRef.current !== u.id) {
-        lastEnsuredRef.current = u.id;
-        ensureProfileOnAuth(u).catch((e) =>
-          console.warn("ensureProfileOnAuth(init):", e?.message || e)
-        );
-      }
-
-      if (!ignore) setLoading(false);
-    };
-
-    init();
-
-    // Suscripción de auth
+    // 2) Escuchar cambios de auth — tampoco bloquea
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
-      async (event, session) => {
+      (event, session) => {
+        if (cancelled) return;
+
         const u = session?.user ?? null;
         setUser(u);
+        setLoading(false); // siempre liberar UI ante cualquier evento
 
-        // ✅ Solo al iniciar sesión; NO en TOKEN_REFRESHED/USER_UPDATED
+        // Asegurar perfil SOLO al iniciar sesión (una vez por usuario)
         if (event === "SIGNED_IN" && u && lastEnsuredRef.current !== u.id) {
           lastEnsuredRef.current = u.id;
           ensureProfileOnAuth(u).catch((e) =>
-            console.warn("ensureProfileOnAuth(SIGNED_IN):", e?.message || e)
+            console.warn("ensureProfileOnAuth:", e?.message || e)
           );
         }
 
@@ -59,7 +54,8 @@ export const AuthProvider = ({ children }) => {
     );
 
     return () => {
-      ignore = true;
+      cancelled = true;
+      clearTimeout(failsafe);
       subscription?.unsubscribe?.();
     };
   }, []);
@@ -73,10 +69,10 @@ export const AuthProvider = ({ children }) => {
 
   return (
     <AuthContext.Provider value={{ user, loading, signOut }}>
-      {!loading ? (
-        children
-      ) : (
+      {loading ? (
         <div className="min-h-screen flex items-center justify-center">Cargando...</div>
+      ) : (
+        children
       )}
     </AuthContext.Provider>
   );

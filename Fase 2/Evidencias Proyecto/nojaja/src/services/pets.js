@@ -113,3 +113,25 @@ export async function hardDeletePet(petId, userId) {
     .eq("user_id", userId);
   if (error) throw error;
 }
+
+
+// Listar mascotas compartidas con el usuario actual (vet)
+export async function listPetsSharedWithMe(userId) {
+  // Requiere tabla pet_member con RLS para member_user_id = auth.uid()
+  const { data, error } = await supabase
+    .schema("petcare")
+    .from("pet_member")
+    .select(`
+      member_role_id,
+      permissions,
+      pet:pet_id (
+        pet_id, name, species_id, breed, image_url, status_id
+      )
+    `)
+    .eq("member_user_id", userId)
+    .order("created_at", { ascending: false });
+
+  if (error) throw error;
+  // normaliza a un arreglo de pets
+  return (data || []).map(r => ({ ...r.pet, member_role_id: r.member_role_id, permissions: r.permissions }));
+}

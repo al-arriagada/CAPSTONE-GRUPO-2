@@ -3,65 +3,54 @@ import { useEffect, useState, useRef } from "react";
 import { supabase } from "../supabaseClient";
 import { useAuth } from "../context/AuthContext";
 import {
-  FaUser,
-  FaPhone,
-  FaEnvelope,
-  FaIdCard,
-  FaCalendar,
-  FaEdit,
-  FaSave,
-  FaImage,
+  FaUser, FaPhone, FaEnvelope, FaIdCard, FaCalendar, FaEdit, FaSave, FaImage, FaTimes, FaAddressBook, FaMap
 } from "react-icons/fa";
 import { normalizeRut } from "../services/profile";
-
+import useUserRole from "../hooks/useUserRole";
 
 export default function OwnerProfile() {
   const { user } = useAuth();
+  const { role } = useUserRole(); // "owner" | "vet"
   const [loading, setLoading] = useState(true);
+
+  // Perfil base
   const [profile, setProfile] = useState(null);
   const [editMode, setEditMode] = useState(false);
   const [formData, setFormData] = useState({});
   const [message, setMessage] = useState("");
   const [uploading, setUploading] = useState(false);
+  const [errors, setErrors] = useState({});
   const fileInputRef = useRef(null);
 
-  // Validaciones
-  const [errors, setErrors] = useState({});
+  // Dirección y geo
+  const [regions, setRegions] = useState([]);
+  const [regionId, setRegionId] = useState("");
+  const [comunas, setComunas] = useState([]);
+  const [comunaId, setComunaId] = useState("");
 
-  const avatarUrl = profile?.avatar_url
-    ? `https://owrosyqgjlelskjhcmbb.supabase.co/storage/v1/object/public/owners/${profile.avatar_url}`
-    : null;
-
-  // ==========================
-  // Validaciones
-  const formatRut = (value) => {
-    const cleaned = (value || "").replace(/[^0-9kK]/g, "").toUpperCase();
-    const capped = cleaned.slice(0, 9);           // <-- evita exceder el largo
-    if (capped.length <= 1) return capped;        // mientras escribe los 1ros chars
-
-    const body = capped.slice(0, -1);             // 1..8 dígitos
-    const dv   = capped.slice(-1);                // 1 dígito o K
+  // ---- helpers de formato ----
+  const formatRutInput = (value) => {
+    const cleaned = (value || "").replace(/[^0-9kK]/g, "").toUpperCase().slice(0, 9);
+    if (cleaned.length <= 1) return cleaned;
+    const body = cleaned.slice(0, -1);
+    const dv = cleaned.slice(-1);
     const withDots = body.replace(/\B(?=(\d{3})+(?!\d))/g, ".");
-    return `${withDots}-${dv}`;                   // siempre con guion
+    return `${withDots}-${dv}`;
   };
 
   const validateRut = (rut) => {
-    const cleanRut = rut.replace(/[^0-9kK]/g, "");
+    const cleanRut = (rut || "").replace(/[^0-9kK]/g, "");
     if (cleanRut.length < 2) return false;
     const body = cleanRut.slice(0, -1);
     const dv = cleanRut.slice(-1).toUpperCase();
-    let sum = 0;
-    let multiplier = 2;
+    let sum = 0, mul = 2;
     for (let i = body.length - 1; i >= 0; i--) {
-      sum += parseInt(body[i]) * multiplier;
-      multiplier = multiplier === 7 ? 2 : multiplier + 1;
+      sum += parseInt(body[i], 10) * mul;
+      mul = mul === 7 ? 2 : mul + 1;
     }
-    const expectedDv = 11 - (sum % 11);
-    let calculatedDv;
-    if (expectedDv === 11) calculatedDv = "0";
-    else if (expectedDv === 10) calculatedDv = "K";
-    else calculatedDv = expectedDv.toString();
-    return dv === calculatedDv;
+    const expected = 11 - (sum % 11);
+    const calc = expected === 11 ? "0" : expected === 10 ? "K" : String(expected);
+    return dv === calc;
   };
 
   const formatRutDisplay = (rut) => {
@@ -73,53 +62,68 @@ export default function OwnerProfile() {
     return `${withDots}-${dv}`;
   };
 
-
-  const formatPhone = (local8) => {
-    const d = (local8 || "").replace(/\D/g, "").slice(0, 8);
-    const a = d.slice(0, 4);
-    const b = d.slice(4, 8);
-    if (!d) return "";
-    if (d.length <= 4) return `+56 9 ${a}`;
-    return `+56 9 ${a} ${b}`;
-  };
-
-  const calculateAge = (dateStr) => {
-    if (!dateStr) return 0;
-    const today = new Date();
-    const birth = new Date(dateStr);
-    let age = today.getFullYear() - birth.getFullYear();
-    const m = today.getMonth() - birth.getMonth();
-    if (m < 0 || (m === 0 && today.getDate() < birth.getDate())) {
-      age--;
-    }
-    return age;
-  };
-
-    // De E.164 o lo que venga -> 8 dígitos locales (CL móvil)
-  const fromAnyToLocal8 = (value) => {
-    const only = (value || "").replace(/\D/g, "");
-    // +56 9 XXXXXXXX
-    if (only.startsWith("569")) return only.slice(3, 11);    // toma los 8 que siguen
+  const fromAnyToLocal8 = (v) => {
+    const only = (v || "").replace(/\D/g, "");
+    if (only.startsWith("569")) return only.slice(3, 11);
     if (only.startsWith("56")) {
       let rest = only.slice(2);
       if (rest.startsWith("9")) rest = rest.slice(1);
       return rest.slice(0, 8);
     }
-    if (only.startsWith("9")) return only.slice(1, 9);       // "9XXXXXXXX"
-    return only.slice(-8);                                    // fallback: últimos 8
+    if (only.startsWith("9")) return only.slice(1, 9);
+    return only.slice(-8);
   };
-
-  // De 8 locales -> E.164 (+569XXXXXXXX), o null si no está completo
   const toE164ClMobile = (local8) => {
     const d = (local8 || "").replace(/\D/g, "");
     return d.length === 8 ? `+569${d}` : null;
   };
+  const formatPhone = (local8) => {
+    const d = (local8 || "").replace(/\D/g, "").slice(0, 8);
+    const a = d.slice(0, 4), b = d.slice(4, 8);
+    if (!d) return "";
+    if (d.length <= 4) return `+56 9 ${a}`;
+    return `+56 9 ${a} ${b}`;
+  };
+  const calculateAge = (dateStr) => {
+    if (!dateStr) return 0;
+    const today = new Date(), birth = new Date(dateStr);
+    let age = today.getFullYear() - birth.getFullYear();
+    const m = today.getMonth() - birth.getMonth();
+    if (m < 0 || (m === 0 && today.getDate() < birth.getDate())) age--;
+    return age;
+  };
+  const formatDate = (dateStr) => {
+    if (!dateStr) return "-";
+    const date = new Date(dateStr);
+    return date.toLocaleDateString("es-CL", { day: "2-digit", month: "2-digit", year: "numeric" });
+  };
 
-  // ==========================
+  const avatarUrl = profile?.avatar_url
+    ? `https://owrosyqgjlelskjhcmbb.supabase.co/storage/v1/object/public/owners/${profile.avatar_url}`
+    : null;
 
+  // ---- cargar catálogos geo ----
+  useEffect(() => {
+    (async () => {
+      const { data } = await supabase.schema("petcare").from("region").select("*").order("name");
+      setRegions(data || []);
+    })();
+  }, []);
 
-  
+  useEffect(() => {
+    if (!regionId) { setComunas([]); return; }
+    (async () => {
+      const { data } = await supabase
+        .schema("petcare")
+        .from("comuna")
+        .select("comuna_id,name")
+        .eq("region_id", regionId)
+        .order("name");
+      setComunas(data || []);
+    })();
+  }, [regionId]);
 
+  // ---- cargar perfil ----
   useEffect(() => {
     const fetchProfile = async () => {
       try {
@@ -135,23 +139,39 @@ export default function OwnerProfile() {
         const { data: userPii } = await supabase
           .schema("petcare")
           .from("user_pii")
-          .select("phone")
+          .select("phone,address_line")
           .eq("user_id", user.id)
-          .single();
+          .maybeSingle();
 
-        const data = {
+        // si hay comuna, obtenemos su región
+        let initialRegionId = "";
+        if (appUser?.comuna_id) {
+          const { data: comunaRow } = await supabase
+            .schema("petcare")
+            .from("comuna")
+            .select("region_id")
+            .eq("comuna_id", appUser.comuna_id)
+            .single();
+          initialRegionId = comunaRow?.region_id ? String(comunaRow.region_id) : "";
+        }
+
+        const base = {
           user_id: user.id,
           full_name: appUser?.full_name ?? "",
           rut: appUser?.rut ?? "",
           email: appUser?.email ?? "",
           phone: fromAnyToLocal8(userPii?.phone ?? ""),
+          address_line: userPii?.address_line ?? "",
           birth_date: appUser?.birth_date ?? "",
           gender: appUser?.gender ?? "",
           avatar_url: appUser?.avatar_url ?? null,
+          comuna_id: appUser?.comuna_id ?? "",
         };
 
-        setProfile(data);
-        setFormData(data);
+        setProfile(base);
+        setFormData(base);
+        setRegionId(initialRegionId);
+        setComunaId(appUser?.comuna_id ? String(appUser.comuna_id) : "");
       } catch (err) {
         console.error("Error fetching profile:", err.message);
       } finally {
@@ -162,36 +182,25 @@ export default function OwnerProfile() {
     fetchProfile();
   }, [user]);
 
+  // ---- handlers ----
   const handleChange = (e) => {
     const { name, value } = e.target;
-
-    // RUT: aplicar formato al escribir
     if (name === "rut") {
-      const formatted = formatRut(value);
-      setFormData((prev) => ({ ...prev, [name]: formatted }));
+      setFormData((p) => ({ ...p, rut: formatRutInput(value) }));
       return;
     }
-
-    // Teléfono: limpiar y guardar
     if (name === "phone") {
-      setFormData((prev) => ({ ...prev, phone: fromAnyToLocal8(value) }));
+      setFormData((p) => ({ ...p, phone: fromAnyToLocal8(value) }));
       return;
     }
-
-    setFormData((prev) => ({ ...prev, [name]: value }));
+    setFormData((p) => ({ ...p, [name]: value }));
   };
 
   const validateBeforeSave = () => {
     const newErrors = {};
-    if (formData.rut && !validateRut(formData.rut)) {
-      newErrors.rut = "RUT inválido";
-    }
-    if (formData.phone && formData.phone.length !== 8) {
-      newErrors.phone = "El teléfono debe tener 8 dígitos locales";
-    }
-    if (formData.birth_date && calculateAge(formData.birth_date) < 18) {
-      newErrors.birth_date = "Debes tener al menos 18 años";
-    }
+    if (formData.rut && !validateRut(formData.rut)) newErrors.rut = "RUT inválido";
+    if (formData.phone && formData.phone.length !== 8) newErrors.phone = "El teléfono debe tener 8 dígitos locales";
+    if (formData.birth_date && calculateAge(formData.birth_date) < 18) newErrors.birth_date = "Debes tener al menos 18 años";
     setErrors(newErrors);
     return Object.keys(newErrors).length === 0;
   };
@@ -199,10 +208,12 @@ export default function OwnerProfile() {
   const handleSave = async () => {
     if (!validateBeforeSave()) return;
     const rutToSave = normalizeRut(formData.rut).compact || null;
+    const phoneE164 = toE164ClMobile(formData.phone);
 
     try {
       setMessage("");
-      
+
+      // app_user (incluye comuna_id)
       const { error: appUserError } = await supabase
         .schema("petcare")
         .from("app_user")
@@ -212,13 +223,12 @@ export default function OwnerProfile() {
           email: formData.email,
           birth_date: formData.birth_date,
           gender: formData.gender,
+          comuna_id: comunaId ? Number(comunaId) : null,
         })
         .eq("user_id", user.id);
-
       if (appUserError) throw appUserError;
-      const phoneE164 = toE164ClMobile(formData.phone); // "+569XXXXXXXX" o null si incompleto
 
-
+      // user_pii (tel + dirección)
       const { error: piiError } = await supabase
         .schema("petcare")
         .from("user_pii")
@@ -226,13 +236,15 @@ export default function OwnerProfile() {
           {
             user_id: user.id,
             phone: phoneE164,
+            address_line: formData.address_line || null,
           },
           { onConflict: "user_id" }
         );
-
       if (piiError) throw piiError;
 
-      setProfile({ ...formData });
+      // reflejar en estado local
+      const updated = { ...formData, comuna_id: comunaId ? Number(comunaId) : null };
+      setProfile(updated);
       setEditMode(false);
       setMessage("Perfil actualizado correctamente ✅");
     } catch (err) {
@@ -241,19 +253,40 @@ export default function OwnerProfile() {
     }
   };
 
+  const handleCancel = () => {
+    // vuelve a lo cargado originalmente
+    setFormData(profile);
+    setMessage("");
+    setErrors({});
+    // re-selecciona geo
+    setComunaId(profile?.comuna_id ? String(profile.comuna_id) : "");
+    // derivar region del valor actual de comuna
+    (async () => {
+      if (profile?.comuna_id) {
+        const { data } = await supabase
+          .schema("petcare")
+          .from("comuna")
+          .select("region_id")
+          .eq("comuna_id", profile.comuna_id)
+          .single();
+        setRegionId(data?.region_id ? String(data.region_id) : "");
+      } else {
+        setRegionId("");
+      }
+    })();
+    setEditMode(false);
+  };
+
   const handleUpload = async (e) => {
     const file = e.target.files[0];
     if (!file || !user) return;
-
     setUploading(true);
     const fileExt = file.name.split(".").pop();
     const filePath = `${user.id}/avatar.${fileExt}`;
 
     const { error: uploadError } = await supabase.storage
       .from("owners")
-      .upload(filePath, file, {
-        upsert: true,
-      });
+      .upload(filePath, file, { upsert: true });
 
     if (uploadError) {
       console.error("Upload error:", uploadError.message);
@@ -262,6 +295,7 @@ export default function OwnerProfile() {
     }
 
     const { error: updateError } = await supabase
+      .schema("petcare")
       .from("app_user")
       .update({ avatar_url: filePath })
       .eq("user_id", user.id);
@@ -277,35 +311,48 @@ export default function OwnerProfile() {
     setUploading(false);
   };
 
-  const formatDate = (dateStr) => {
-    if (!dateStr) return "-";
-    const date = new Date(dateStr);
-    return date.toLocaleDateString("es-CL", {
-      day: "2-digit",
-      month: "2-digit",
-      year: "numeric",
-    });
-  };
+  // helpers para mostrar nombres
+  const regionName = regionId ? regions.find(r => String(r.region_id) === String(regionId))?.name : null;
+  const comunaName = comunaId ? comunas.find(c => String(c.comuna_id) === String(comunaId))?.name : null;
 
   if (loading) return <p className="text-center mt-10">Cargando perfil...</p>;
   if (!profile) return <p className="text-center mt-10">Perfil no encontrado.</p>;
 
   return (
     <div className="max-w-4xl mx-auto px-4 py-8">
+      {/* Header */}
       <div className="flex justify-between items-center mb-6">
         <h1 className="text-3xl font-bold">Mi Perfil</h1>
-        <button
-          onClick={editMode ? handleSave : () => setEditMode(true)}
-          className={`px-4 py-2 rounded flex items-center gap-2 text-white ${editMode ? "bg-green-600 hover:bg-green-700" : "bg-black hover:bg-gray-800"
-            }`}
-        >
-          {editMode ? <FaSave /> : <FaEdit />}
-          {editMode ? "Guardar Cambios" : "Editar Perfil"}
-        </button>
+        <div className="flex gap-2">
+          {editMode ? (
+            <>
+              <button
+                onClick={handleSave}
+                className="px-4 py-2 rounded flex items-center gap-2 text-white bg-green-600 hover:bg-green-700"
+              >
+                <FaSave /> Guardar Cambios
+              </button>
+              <button
+                onClick={handleCancel}
+                className="px-4 py-2 rounded flex items-center gap-2 border hover:bg-gray-50"
+              >
+                <FaTimes /> Cancelar
+              </button>
+            </>
+          ) : (
+            <button
+              onClick={() => setEditMode(true)}
+              className="px-4 py-2 rounded flex items-center gap-2 text-white bg-black hover:bg-gray-800"
+            >
+              <FaEdit /> Editar Perfil
+            </button>
+          )}
+        </div>
       </div>
 
       {message && <p className="mb-4 text-center text-sm text-blue-600">{message}</p>}
 
+      {/* Avatar + título */}
       <div className="bg-white rounded-lg shadow p-6 mb-6">
         <div className="flex flex-col sm:flex-row items-center sm:items-start gap-4">
           <div className="relative w-24 h-24 rounded-full overflow-hidden bg-gray-200">
@@ -320,25 +367,21 @@ export default function OwnerProfile() {
               <button
                 onClick={() => fileInputRef.current?.click()}
                 className="absolute bottom-0 right-0 bg-black text-white p-1 rounded-full"
+                title={uploading ? "Subiendo..." : "Cambiar foto"}
               >
                 <FaImage size={14} />
               </button>
             )}
-            <input
-              type="file"
-              accept="image/*"
-              ref={fileInputRef}
-              onChange={handleUpload}
-              hidden
-            />
+            <input type="file" accept="image/*" ref={fileInputRef} onChange={handleUpload} hidden />
           </div>
           <div className="text-center sm:text-left">
             <h2 className="text-2xl font-semibold">{profile.full_name || "-"}</h2>
-            <p className="text-sm text-gray-500">Dueño de Mascota</p>
+            <p className="text-sm text-gray-500">{role === "vet" ? "Veterinario/a" : "Dueño/a de Mascota"}</p>
           </div>
         </div>
       </div>
 
+      {/* Contacto */}
       <div className="bg-white rounded-lg shadow p-6 mb-6">
         <h3 className="text-lg font-semibold mb-4">Información de Contacto</h3>
         <div className="grid sm:grid-cols-2 gap-4 text-gray-700">
@@ -348,39 +391,84 @@ export default function OwnerProfile() {
             </label>
             {editMode ? (
               <input name="email" value={formData.email} onChange={handleChange} className="border rounded px-2 py-1 w-full" />
-            ) : (
-              profile.email || "-"
-            )}
+            ) : (profile.email || "-")}
           </div>
+
           <div>
             <label className="text-sm font-medium flex items-center gap-2">
               <FaPhone /> Teléfono
             </label>
             {editMode ? (
               <>
-                <input name="phone" type="tel" inputMode="numeric"  value={formatPhone(formData.phone)} onChange={handleChange} className="border rounded px-2 py-1 w-full" />
+                <input
+                  name="phone"
+                  type="tel"
+                  inputMode="numeric"
+                  value={formatPhone(formData.phone)}
+                  onChange={handleChange}
+                  className="border rounded px-2 py-1 w-full"
+                  placeholder="+56 9 1234 5678"
+                />
                 {errors.phone && <p className="text-xs text-red-600 mt-1">{errors.phone}</p>}
               </>
-            ) : (
-              formatPhone(profile.phone) || "-"
-            )}
+            ) : (formatPhone(profile.phone) || "-")}
           </div>
-          <div>
-            <label className="text-sm font-medium flex items-center gap-2">
-              <FaIdCard /> RUT
+
+          <div className="sm:col-span-2">
+            <label className="text-sm font-medium flex items-center gap-2"> 
+              <FaAddressBook /> Dirección
             </label>
             {editMode ? (
-              <>
-                <input name="rut" value={formData.rut} onChange={handleChange} className="border rounded px-2 py-1 w-full" maxLength={12} />
-                {errors.rut && <p className="text-xs text-red-600 mt-1">{errors.rut}</p>}
-              </>
+              <input
+                name="address_line"
+                value={formData.address_line}
+                onChange={handleChange}
+                className="border rounded px-2 py-1 w-full"
+                placeholder="Calle 123, depto 45"
+              />
+            ) : (profile.address_line || "-")}
+          </div>
+
+          {/* Región / Comuna */}
+          <div>
+            <label className="text-sm font-medium flex items-center gap-2"><FaMap /> Región</label>
+            {editMode ? (
+              <select
+                className="border rounded px-2 py-1 w-full bg-white"
+                value={regionId}
+                onChange={(e) => { setRegionId(e.target.value); setComunaId(""); }}
+              >
+                <option value="">Seleccionar región</option>
+                {regions.map(r => (
+                  <option key={r.region_id} value={r.region_id}>{r.name}</option>
+                ))}
+              </select>
+            ) : (regionName || "-")}
+          </div>
+
+          <div>
+            <label className="text-sm font-medium flex items-center gap-2"> <FaMap /> Comuna</label>
+            {editMode ? (
+              <select
+                className="border rounded px-2 py-1 w-full bg-white"
+                value={comunaId}
+                onChange={(e) => setComunaId(e.target.value)}
+                disabled={!regionId}
+              >
+                <option value="">{regionId ? "Seleccionar comuna" : "Primero elige región"}</option>
+                {comunas.map(c => (
+                  <option key={c.comuna_id} value={c.comuna_id}>{c.name}</option>
+                ))}
+              </select>
             ) : (
-              formatRutDisplay(profile.rut) || "-"
+              // mostrar nombre si coincide con lista actual; si no, cae a "-"
+              (comunaName || "-")
             )}
           </div>
         </div>
       </div>
 
+      {/* Datos personales */}
       <div className="bg-white rounded-lg shadow p-6 mb-6">
         <h3 className="text-lg font-semibold mb-4">Información Personal</h3>
         <div className="grid sm:grid-cols-2 gap-4 text-gray-700">
@@ -390,37 +478,59 @@ export default function OwnerProfile() {
             </label>
             {editMode ? (
               <input name="full_name" value={formData.full_name} onChange={handleChange} className="border rounded px-2 py-1 w-full" />
-            ) : (
-              profile.full_name || "-"
-            )}
+            ) : (profile.full_name || "-")}
           </div>
+
+          <div>
+            <label className="text-sm font-medium flex items-center gap-2">
+              <FaIdCard /> RUT
+            </label>
+            {editMode ? (
+              <>
+                <input
+                  name="rut"
+                  value={formData.rut}
+                  onChange={handleChange}
+                  className="border rounded px-2 py-1 w-full"
+                  maxLength={12}
+                  placeholder="12.345.678-9"
+                />
+                {errors.rut && <p className="text-xs text-red-600 mt-1">{errors.rut}</p>}
+              </>
+            ) : (formatRutDisplay(profile.rut) || "-")}
+          </div>
+
           <div>
             <label className="text-sm font-medium flex items-center gap-2">
               <FaCalendar /> Fecha de nacimiento
             </label>
             {editMode ? (
               <>
-                <input type="date" name="birth_date" value={formData.birth_date} onChange={handleChange} className="border rounded px-2 py-1 w-full" />
+                <input
+                  type="date"
+                  name="birth_date"
+                  value={formData.birth_date || ""}
+                  onChange={handleChange}
+                  className="border rounded px-2 py-1 w-full"
+                  max={new Date().toISOString().split("T")[0]}
+                />
                 {errors.birth_date && <p className="text-xs text-red-600 mt-1">{errors.birth_date}</p>}
               </>
-            ) : (
-              formatDate(profile.birth_date)
-            )}
+            ) : (formatDate(profile.birth_date))}
           </div>
+
           <div>
             <label className="text-sm font-medium flex items-center gap-2">
               <FaUser /> Género
             </label>
             {editMode ? (
-              <select name="gender" value={formData.gender} onChange={handleChange} className="border rounded px-2 py-1 w-full">
+              <select name="gender" value={formData.gender || ""} onChange={handleChange} className="border rounded px-2 py-1 w-full">
                 <option value="">Seleccionar</option>
                 <option value="Femenino">Femenino</option>
                 <option value="Masculino">Masculino</option>
                 <option value="Otro">Otro</option>
               </select>
-            ) : (
-              profile.gender || "-"
-            )}
+            ) : (profile.gender || "-")}
           </div>
         </div>
       </div>

@@ -32,6 +32,15 @@ export default function PetDetail() {
   const [showEventModal, setShowEventModal] = useState(false);
   const [eventTypes, setEventTypes] = useState([]);
 
+  // === Colaboradores (nuevo) ===
+  const [members, setMembers] = useState([]);
+  const [membersLoading, setMembersLoading] = useState(false);
+  const [inviteEmail, setInviteEmail] = useState("");
+  const [inviteRole, setInviteRole] = useState("vet"); // vet por defecto
+  const [inviteBusy, setInviteBusy] = useState(false);
+  const [memberMsg, setMemberMsg] = useState("");
+  const [memberErr, setMemberErr] = useState("");
+
   const [formData, setFormData] = useState({
     name: "",
     species_id: "",
@@ -76,24 +85,19 @@ export default function PetDetail() {
       setWeightError("");
       return true;
     }
-
     const weight = parseFloat(value);
-
     if (isNaN(weight)) {
       setWeightError("El peso debe ser un número válido");
       return false;
     }
-
     if (weight <= 0) {
       setWeightError("El peso debe ser mayor a 0");
       return false;
     }
-
     if (weight > 500) {
       setWeightError("El peso no puede ser mayor a 500 kg");
       return false;
     }
-
     setWeightError("");
     return true;
   };
@@ -127,7 +131,6 @@ export default function PetDetail() {
     if (error) {
       console.error("❌ Error cargando tipos de evento:", error);
     } else {
-      console.log("✅ Tipos de evento cargados:", data);
       setEventTypes(data || []);
     }
   };
@@ -337,6 +340,115 @@ export default function PetDetail() {
   const getStatusName = (id) =>
     statuses.find((st) => st.status_id === id)?.display_name || "—";
 
+  // ========= COLABORADORES: funciones =========
+  const loadMembers = async () => {
+    setMembersLoading(true);
+    setMemberErr("");
+    try {
+      // 1) Trae rows de pet_member (sin invited_at)
+      const { data: rows, error } = await supabase
+        .schema("petcare")
+        .from("pet_member")
+        .select("pet_id, member_user_id, member_role_id, permissions, created_at")
+        .eq("pet_id", id)
+        .order("created_at", { ascending: false }); // <-- usa created_at
+
+      if (error) throw error;
+
+      // 2) Enriquecer con nombre/email del usuario
+      const ids = (rows || []).map(r => r.member_user_id).filter(Boolean);
+      if (ids.length === 0) {
+        setMembers(rows || []);
+        return;
+      }
+
+      const { data: users, error: uerr } = await supabase
+        .schema("petcare")
+        .from("app_user")
+        .select("user_id, full_name, email, avatar_url")
+        .in("user_id", ids);
+
+      if (uerr) throw uerr;
+
+      const byId = Object.fromEntries((users || []).map(u => [u.user_id, u]));
+      const enriched = rows.map(r => ({ ...r, app_user: byId[r.member_user_id] || null }));
+      setMembers(enriched);
+    } catch (e) {
+      console.error("loadMembers:", e);
+      setMemberErr(e.message || "No se pudieron cargar los colaboradores.");
+    } finally {
+      setMembersLoading(false);
+    }
+  };
+
+  const handleInvite = async (e) => {
+    e.preventDefault();
+    setMemberMsg("");
+    setMemberErr("");
+    if (!inviteEmail.trim()) {
+      setMemberErr("Ingresa un correo válido.");
+      return;
+    }
+    setInviteBusy(true);
+    try {
+      const { error } = await supabase
+      .schema("petcare")
+      .rpc("grant_pet_member_by_email", {
+        p_pet_id: id,
+        p_email: inviteEmail.trim(),
+        p_member_role: inviteRole,
+      });
+      if (error) throw error;
+
+      setMemberMsg("Invitación enviada / acceso concedido ✅");
+      setInviteEmail("");
+      await loadMembers();
+    } catch (e) {
+      console.error("handleInvite:", e);
+      const msg = String(e?.message || "");
+      if (msg.toLowerCase().includes("function") && msg.toLowerCase().includes("grant_pet_member_by_email")) {
+        setMemberErr("RPC grant_pet_member_by_email no existe. Aplica la migración/SQL correspondiente.");
+      } else {
+        setMemberErr(e.message || "No se pudo invitar al colaborador.");
+      }
+    } finally {
+      setInviteBusy(false);
+    }
+  };
+
+  const revokeMember = async (memberUserId) => {
+    if (!confirm("¿Revocar acceso de este colaborador?")) return;
+    setMemberErr("");
+    setMemberMsg("");
+    try {
+      const { error } = await supabase
+        .schema("petcare")
+        .from("pet_member")
+        .delete()
+        .eq("pet_id", id)
+        .eq("member_user_id", memberUserId);
+      if (error) throw error;
+
+      setMemberMsg("Acceso revocado.");
+      await loadMembers();
+    } catch (e) {
+      console.error("revokeMember:", e);
+      setMemberErr(e.message || "No se pudo revocar el acceso.");
+    }
+  };
+
+  const roleBadge = (r) => {
+    if (r === "vet") return <span className="px-2 py-0.5 text-xs rounded-full bg-purple-100 text-purple-700">Veterinario</span>;
+    if (r === "viewer") return <span className="px-2 py-0.5 text-xs rounded-full bg-gray-100 text-gray-700">Lector</span>;
+    if (r === "editor") return <span className="px-2 py-0.5 text-xs rounded-full bg-blue-100 text-blue-700">Editor</span>;
+    return <span className="px-2 py-0.5 text-xs rounded-full bg-gray-100 text-gray-700">{r}</span>;
+  };
+
+  // carga miembros cuando entras a la tab
+  useEffect(() => {
+    if (activeTab === "colaboradores") loadMembers();
+  }, [activeTab, id]);
+
   if (loading) {
     return (
       <div className="min-h-screen bg-gray-50 flex items-center justify-center">
@@ -517,6 +629,16 @@ export default function PetDetail() {
                 >
                   Rutinas y eventos
                 </button>
+                {/* NUEVA pestaña */}
+                <button
+                  onClick={() => setActiveTab("colaboradores")}
+                  className={`flex-1 px-6 py-4 text-sm font-medium transition-colors ${activeTab === "colaboradores"
+                    ? "border-b-2 border-black text-black"
+                    : "text-gray-500 hover:text-gray-700"
+                    }`}
+                >
+                  Colaboradores
+                </button>
               </div>
             </div>
 
@@ -680,6 +802,96 @@ export default function PetDetail() {
                         setShowEventModal(true);
                       }}
                     />
+                  </div>
+                </div>
+              )}
+
+              {/* === NUEVO: pestaña Colaboradores === */}
+              {activeTab === "colaboradores" && (
+                <div className="space-y-6">
+                  <div className="flex items-center gap-3 mb-2">
+                    <span className="text-2xl">🤝</span>
+                    <h3 className="text-xl font-semibold">Colaboradores en {pet.name}</h3>
+                  </div>
+                  <p className="text-gray-600">
+                    Invita a profesionales por correo. Los veterinarios podrán agregar documentos y eventos si la política lo permite.
+                  </p>
+
+                  {(memberErr || memberMsg) && (
+                    <div className={`p-3 rounded-xl border ${memberErr ? 'bg-red-50 border-red-200 text-red-700' : 'bg-green-50 border-green-200 text-green-700'}`}>
+                      {memberErr || memberMsg}
+                    </div>
+                  )}
+
+                  <form onSubmit={handleInvite} className="flex flex-col sm:flex-row gap-3 items-stretch sm:items-end">
+                    <div className="flex-1">
+                      <label className="block text-sm font-medium text-gray-700 mb-1">Correo del colaborador</label>
+                      <input
+                        type="email"
+                        placeholder="profesional@clinica.cl"
+                        className="w-full px-3 py-2 border rounded-xl"
+                        value={inviteEmail}
+                        onChange={(e) => setInviteEmail(e.target.value)}
+                        required
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">Rol</label>
+                      <select
+                        className="px-3 py-2 border rounded-xl bg-white"
+                        value={inviteRole}
+                        onChange={(e) => setInviteRole(e.target.value)}
+                      >
+                        <option value="vet">Veterinario</option>
+                        <option value="viewer">Lector</option>
+                        <option value="editor">Editor</option>
+                      </select>
+                    </div>
+                    <button
+                      type="submit"
+                      disabled={inviteBusy}
+                      className={`px-4 py-2 rounded-xl text-white ${inviteBusy ? 'bg-gray-400' : 'bg-black hover:bg-gray-800'}`}
+                    >
+                      {inviteBusy ? "Invitando..." : "Invitar"}
+                    </button>
+                  </form>
+
+                  <div className="mt-4">
+                    <h4 className="font-semibold mb-3">Accesos actuales</h4>
+                    {membersLoading ? (
+                      <div className="text-gray-500">Cargando colaboradores…</div>
+                    ) : members.length === 0 ? (
+                      <div className="text-gray-500">Aún no hay colaboradores.</div>
+                    ) : (
+                      <ul className="divide-y">
+                        {members.map((m) => {
+                          const name = m.app_user?.full_name || m.app_user?.email || m.member_user_id;
+                          const email = m.app_user?.email;
+                          return (
+                            <li key={m.member_user_id} className="py-3 flex items-center justify-between">
+                              <div>
+                                <div className="font-medium">{name}</div>
+                                <div className="text-sm text-gray-500 flex items-center gap-2">
+                                  {email && <span>{email}</span>}
+                                  {roleBadge(m.member_role_id)}
+                                  {Array.isArray(m.permissions) && m.permissions.length > 0 && (
+                                    <span className="text-xs bg-gray-100 px-2 py-0.5 rounded-full">
+                                      {m.permissions.join(", ")}
+                                    </span>
+                                  )}
+                                </div>
+                              </div>
+                              <button
+                                onClick={() => revokeMember(m.member_user_id)}
+                                className="px-3 py-1.5 rounded-lg border hover:bg-gray-50 text-sm"
+                              >
+                                Revocar
+                              </button>
+                            </li>
+                          );
+                        })}
+                      </ul>
+                    )}
                   </div>
                 </div>
               )}
@@ -947,8 +1159,8 @@ function ConfirmDialog({
   onCancel,
   danger = false,
   requireText = false,
-  expectedText = "",     // texto que el usuario debe escribir (ej: nombre de la mascota)
-  disabled = false,      // opcional: deshabilitar todo si estás en loading
+  expectedText = "",
+  disabled = false,
 }) {
   const [typed, setTyped] = React.useState("");
 
@@ -961,7 +1173,7 @@ function ConfirmDialog({
       .trim()
       .toLowerCase()
       .normalize("NFD")
-      .replace(/\p{Diacritic}/gu, ""); // quita tildes (á->a), requiere soporte Unicode
+      .replace(/\p{Diacritic}/gu, "");
 
   const matchOK = !requireText || normalize(typed) === normalize(expectedText);
   const canConfirm = !disabled && matchOK;
@@ -1038,7 +1250,7 @@ function Calendar({ routines = [], events = [], onDayClick }) {
 
   const daysInMonth = new Date(currentYear, currentMonth + 1, 0).getDate();
   let firstDay = new Date(currentYear, currentMonth, 1).getDay();
-  firstDay = firstDay === 0 ? 6 : firstDay - 1; // Semana empieza en lunes
+  firstDay = firstDay === 0 ? 6 : firstDay - 1;
 
   const prevMonth = () => {
     if (currentMonth === 0) {
@@ -1089,7 +1301,6 @@ function Calendar({ routines = [], events = [], onDayClick }) {
 
   return (
     <div className="text-center">
-      {/* Encabezado */}
       <div className="flex flex-wrap justify-between items-center mb-4 gap-3">
         <div className="flex items-center gap-2">
           <button onClick={prevMonth} className="px-3 py-1 border rounded-lg hover:bg-gray-100">
@@ -1133,14 +1344,12 @@ function Calendar({ routines = [], events = [], onDayClick }) {
         </span>
       </div>
 
-      {/* Encabezado de días */}
       <div className="grid grid-cols-7 gap-2 text-sm font-medium text-gray-600">
         {["Lun", "Mar", "Mié", "Jue", "Vie", "Sáb", "Dom"].map((d) => (
           <div key={d}>{d}</div>
         ))}
       </div>
 
-      {/* Días del calendario */}
       <div className="grid grid-cols-7 gap-2 text-sm mt-1">
         {calendarDays.map((day, i) => {
           if (!day) return <div key={i} />;
@@ -1154,7 +1363,7 @@ function Calendar({ routines = [], events = [], onDayClick }) {
           return (
             <div
               key={i}
-              onClick={() => onDayClick?.(dateObj)} // 👈 ejecuta callback al hacer clic
+              onClick={() => onDayClick?.(dateObj)}
               className={`cursor-pointer h-14 flex flex-col items-center justify-center rounded-lg border relative transition ${isToday
                 ? "bg-pink-500 text-white"
                 : "bg-white text-gray-700 hover:bg-gray-100"
@@ -1209,7 +1418,6 @@ function EventModal({ open, date, events, onClose, petId, eventTypes, onEventAdd
     }
 
     try {
-      // 1️⃣ Insertar evento principal
       const { data: inserted, error: insertError } = await supabase
         .schema("petcare")
         .from("event")
@@ -1226,7 +1434,6 @@ function EventModal({ open, date, events, onClose, petId, eventTypes, onEventAdd
 
       if (insertError) throw insertError;
 
-      // 2️⃣ Si es tipo vacuna → crea registro en vaccine_event
       const selectedType = eventTypes.find(
         (t) => t.event_type_id === newEvent.type_id
       );
@@ -1249,7 +1456,6 @@ function EventModal({ open, date, events, onClose, petId, eventTypes, onEventAdd
       setSuccess("Evento registrado exitosamente.");
       setNewEvent({ type_id: "", details: "", vaccine_next: "" });
 
-      // 3️⃣ Refrescar lista de eventos del día
       onEventAdded();
     } catch (err) {
       console.error(err);
@@ -1273,7 +1479,6 @@ function EventModal({ open, date, events, onClose, petId, eventTypes, onEventAdd
           Eventos del {formattedDate}
         </h3>
 
-        {/* Lista de eventos */}
         {events.length === 0 ? (
           <p className="text-gray-500 text-sm mt-4">No hay eventos registrados.</p>
         ) : (
@@ -1309,7 +1514,6 @@ function EventModal({ open, date, events, onClose, petId, eventTypes, onEventAdd
           </ul>
         )}
 
-        {/* Formulario de nuevo evento */}
         <form onSubmit={handleSubmit} className="mt-6 pt-4 border-t">
           <h4 className="text-sm font-medium mb-3">Registrar nuevo evento</h4>
 
@@ -1338,7 +1542,6 @@ function EventModal({ open, date, events, onClose, petId, eventTypes, onEventAdd
               rows={3}
             />
 
-            {/* Solo si el tipo incluye “vacuna” */}
             {eventTypes.find(
               (t) =>
                 t.event_type_id === newEvent.type_id &&
@@ -1381,5 +1584,3 @@ function EventModal({ open, date, events, onClose, petId, eventTypes, onEventAdd
     </div>
   );
 }
-
-

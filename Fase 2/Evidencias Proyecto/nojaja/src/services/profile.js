@@ -93,7 +93,7 @@ export async function upsertAppUserFromAuthUser(user, overrides = {}) {
 export async function ensureProfileOnAuth(authUser) {
   if (!authUser?.id) return;
 
-  // ¿Ya existe perfil?
+  // ¿ya existe?
   const { data: exists, error: selErr } = await supabase
     .schema("petcare")
     .from("app_user")
@@ -105,36 +105,55 @@ export async function ensureProfileOnAuth(authUser) {
     console.warn("ensureProfileOnAuth select:", selErr?.message || selErr);
     return;
   }
-  if (exists) return; // ✅ no tocar perfiles existentes
+  if (exists) return; // no tocar si ya existe
 
   const meta = authUser.user_metadata || {};
   const { compact: rutCompact } = normalizeRut(meta.rut ?? "");
+
+  // armamos fila base; solo incluimos claves cuando vienen
   const base = {
     user_id: authUser.id,
     email: authUser.email ?? null,
     full_name: meta.full_name ?? meta.name ?? null,
-    birth_date: meta.birth_date ?? null,
     gender: meta.gender ?? null,
-    rut: rutCompact || null,
   };
+  if (meta.birth_date) base.birth_date = meta.birth_date;           // si la columna existe
+  if (rutCompact) base.rut = rutCompact;
+  if (meta.comuna_id) base.comuna_id = Number(meta.comuna_id);      // <- comuna
+  // si definiste role_id en tu tabla, también puedes intentar guardarlo:
+  if (meta.role_id) base.role_id = meta.role_id;
 
-  const { error: insErr } = await supabase
-    .schema("petcare")
-    .from("app_user")
-    .insert([base]);
+  // inserta UNA vez; si falta alguna columna (42703), reintenta sin esa(s)
+  let { error } = await supabase.schema("petcare").from("app_user").insert(base);
 
-  if (insErr) {
-    console.warn("ensureProfileOnAuth insert app_user:", insErr?.message || insErr);
-    return;
+  if (error) {
+    if (error.code === "42703") {
+      const cleaned = { ...base };
+      delete cleaned.role_id;
+      delete cleaned.birth_date;
+      const r2 = await supabase.schema("petcare").from("app_user").insert(cleaned);
+      if (r2.error && r2.error.code !== "23505") {
+        console.warn("ensureProfileOnAuth insert (retry):", r2.error.message || r2.error);
+        return;
+      }
+    } else if (error.code !== "23505") {
+      console.warn("ensureProfileOnAuth insert:", error.message || error);
+      return;
+    }
   }
 
-  // Crea user_pii solo si hay algo útil (p. ej. teléfono)
+  // user_pii: teléfono y dirección (si vienen)
   const phoneE164 = normalizePhoneToE164CL(meta.phone ?? "");
-  if (phoneE164) {
-    await supabase
+  const pii = { user_id: authUser.id };
+  if (phoneE164) pii.phone = phoneE164;
+  if (meta.address_line) pii.address_line = meta.address_line;      // <- dirección
+
+  if (pii.phone || pii.address_line) {
+    const { error: piiErr } = await supabase
       .schema("petcare")
       .from("user_pii")
-      .upsert({ user_id: authUser.id, phone: phoneE164 }, { onConflict: "user_id" })
-      .catch((e) => console.warn("ensureProfileOnAuth upsert user_pii:", e?.message || e));
+      .upsert(pii, { onConflict: "user_id" });
+    if (piiErr) console.warn("ensureProfileOnAuth upsert user_pii:", piiErr.message || piiErr);
   }
 }
+

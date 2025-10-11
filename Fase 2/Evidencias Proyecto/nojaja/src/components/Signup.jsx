@@ -1,6 +1,6 @@
 // src/components/Signup.jsx
 import { useEffect, useMemo, useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import { supabase } from "../supabaseClient";
 
 const GENDERS = [
@@ -11,13 +11,19 @@ const GENDERS = [
 
 export default function Signup() {
   const navigate = useNavigate();
+  const [sp] = useSearchParams();
+
+  // ==== Rol (Dueño por defecto o ?role=vet)
+  const roleFromQuery = (sp.get("role") || "").toLowerCase();
+  const [role, setRole] = useState(roleFromQuery === "vet" ? "vet" : "owner");
+  const isVet = role === "vet";
 
   // ==== Campos básicos
   const [username, setUsername] = useState("");
   const [email, setEmail] = useState("");
   const [rut, setRut] = useState("");
 
-  // ==== Fecha por selects (más rápido que <input type="date">)
+  // ==== Fecha por selects
   const [dobDay, setDobDay] = useState("");
   const [dobMonth, setDobMonth] = useState("");
   const [dobYear, setDobYear] = useState("");
@@ -51,25 +57,25 @@ export default function Signup() {
   const [success, setSuccess] = useState("");
   const [loading, setLoading] = useState(false);
 
-  // ========= Helpers que ya tenías =========
+  // ========= Helpers =========
 
+  // Teléfono CL
   const formatClMobileDisplay = (local8) => {
-  const d = (local8 || "").replace(/\D/g, "").slice(0, 8);
-  const a = d.slice(0, 4);
-  const b = d.slice(4, 8);
-  if (!d) return "";                 // input vacío
-  if (d.length <= 4) return `+56 9 ${a}`;
-  return `+56 9 ${a} ${b}`;
-};
+    const d = (local8 || "").replace(/\D/g, "").slice(0, 8);
+    const a = d.slice(0, 4);
+    const b = d.slice(4, 8);
+    if (!d) return "";
+    if (d.length <= 4) return `+56 9 ${a}`;
+    return `+56 9 ${a} ${b}`;
+  };
 
   const normalizeClMobileFromAny = (value) => {
-    // Acepta pegados: "+56 9 1234 5678", "56912345678", "912345678", "12345678"
     const only = (value || "").replace(/\D/g, "");
     let local = only;
     if (only.startsWith("569")) local = only.slice(3);
     else if (only.startsWith("56")) local = only.slice(2);
     if (local.startsWith("9")) local = local.slice(1);
-    return local.slice(0, 8); // 8 dígitos locales
+    return local.slice(0, 8);
   };
 
   const toE164ClMobile = (local8) => {
@@ -77,8 +83,7 @@ export default function Signup() {
     return d.length === 8 ? `+569${d}` : null;
   };
 
-
-  // formatea RUT
+  // RUT
   const formatRut = (value) => {
     const cleaned = value.replace(/[^0-9kK]/g, "");
     if (cleaned.length === 0) return "";
@@ -90,9 +95,8 @@ export default function Signup() {
   };
 
   const normalizeRut = (value) =>
-  (value || "").replace(/[^0-9kK]/g, "").toUpperCase();
+    (value || "").replace(/[^0-9kK]/g, "").toUpperCase();
 
-  // valida RUT
   const validateRut = (rut) => {
     const cleanRut = rut.replace(/[^0-9kK]/g, "");
     if (cleanRut.length < 2) return false;
@@ -138,7 +142,6 @@ export default function Signup() {
   };
 
   const handleRutChange = (e) => setRut(formatRut(e.target.value));
-  const handlePasswordChange = (e) => validatePasswordStrength(e.target.value) && setPassword(e.target.value);
 
   const getPasswordStrengthColor = () => {
     const score = Object.values(passwordStrength).filter(Boolean).length;
@@ -212,21 +215,31 @@ export default function Signup() {
     })();
   }, [regionId]);
 
-  // ========= Validación total
+  // ========= Validación total =========
   const validateAll = () => {
     if (!username.trim()) return "Debes ingresar un nombre de usuario.";
     if (!email.trim()) return "Debes ingresar un correo.";
-    if (!validateRut(rut)) return "RUT inválido. Por favor verifica el formato.";
+
+    // RUT: obligatorio para Dueño; opcional para Vet (si lo ingresa, se valida)
+    if (!isVet) {
+      if (!validateRut(rut)) return "RUT inválido. Por favor verifica el formato.";
+    } else if (rut && !validateRut(rut)) {
+      return "RUT inválido. Por favor verifica el formato.";
+    }
+
     if (!birthDateISO) return "Selecciona tu fecha de nacimiento.";
     const age = calculateAge(birthDateISO);
     if (age < 18) return "Debes ser mayor de 18 años para registrarte.";
-    if (!validatePasswordStrength(password)) return "La contraseña no cumple con los requisitos de seguridad.";
+    if (!Object.values(passwordStrength).every(Boolean))
+      return "La contraseña no cumple con los requisitos de seguridad.";
     if (password !== confirmPassword) return "Las contraseñas no coinciden.";
     if (!regionId || !comunaId) return "Selecciona tu región y comuna.";
+    if (phoneLocal && phoneLocal.length !== 8)
+      return "El teléfono debe tener 8 dígitos locales (sin +56 9).";
     return "";
   };
 
-  // ========= Submit
+  // ========= Submit =========
   const handleSignup = async (e) => {
     e.preventDefault();
     setError("");
@@ -237,7 +250,9 @@ export default function Signup() {
 
     try {
       setLoading(true);
-              // 1) check RUT en servidor (RPC)
+
+      // 1) check RUT en servidor solo para Dueño (y si hay RUT)
+      if (!isVet && rut) {
         const { data: rutExists, error: rutErr } = await supabase.rpc(
           "rut_exists",
           { p_rut: normalizeRut(rut) }
@@ -253,32 +268,30 @@ export default function Signup() {
           setLoading(false);
           return;
         }
+      }
 
-
+      // 2) signup
       const { data, error: authError } = await supabase.auth.signUp({
         email,
         password,
         options: {
           data: {
-            full_name: username,          // lo usará ensureProfile
-            rut,                          // opcional en auth; útil para tu ensureProfile
+            full_name: username,
+            rut: rut || null,
             gender,
             birth_date: birthDateISO,     // YYYY-MM-DD
             phone: toE164ClMobile(phoneLocal) || null,
             address_line: address || null,
             region_id: regionId ? Number(regionId) : null,
             comuna_id: comunaId ? Number(comunaId) : null,
+            role_id: role,                // 👈 guardamos el rol
           },
         },
       });
 
       if (authError) {
         const msg = (authError?.message || "").toLowerCase();
-        if (
-          msg.includes("already registered") ||
-          msg.includes("user already") ||
-          msg.includes("duplicate")
-        ) {
+        if (msg.includes("already registered") || msg.includes("user already") || msg.includes("duplicate")) {
           setError("Este correo ya está registrado.");
         } else if (msg.includes("password")) {
           setError("La contraseña debe tener al menos 6 caracteres.");
@@ -288,8 +301,7 @@ export default function Signup() {
         return;
       }
 
-
-      // Caso de confirmación por correo: usuario “ofuscado” indica email ya existe
+      // Usuario ofuscado (email existente)
       const isObfuscatedUser =
         data?.user && Array.isArray(data.user.identities) && data.user.identities.length === 0;
       if (isObfuscatedUser) {
@@ -312,7 +324,7 @@ export default function Signup() {
     }
   };
 
-  // ========= UI
+  // ========= UI =========
   return (
     <div className="min-h-screen flex items-center justify-center bg-gradient-to-r from-pink-500 via-purple-500 to-indigo-500 px-6 py-12">
       <div className="w-full max-w-2xl bg-white/90 backdrop-blur-xl rounded-2xl shadow-2xl p-8">
@@ -336,7 +348,22 @@ export default function Signup() {
           )}
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            {/* nombre usuario */}
+            {/* tipo de cuenta */}
+            <div className="md:col-span-2">
+              <label className="block text-sm font-semibold text-gray-700">
+                Tipo de cuenta
+              </label>
+              <select
+                className="w-full px-4 py-3 mt-1 text-gray-900 border border-gray-300 rounded-xl shadow-sm focus:ring-2 focus:ring-pink-500 focus:border-pink-500 transition"
+                value={role}
+                onChange={(e) => setRole(e.target.value)}
+              >
+                <option value="owner">Dueño/a</option>
+                <option value="vet">Veterinario/a</option>
+              </select>
+            </div>
+
+            {/* nombre */}
             <div>
               <label className="block text-sm font-semibold text-gray-700">
                 Nombre completo *
@@ -345,7 +372,7 @@ export default function Signup() {
                 type="text"
                 required
                 className="w-full px-4 py-3 mt-1 text-gray-900 border border-gray-300 rounded-xl shadow-sm focus:ring-2 focus:ring-pink-500 focus:border-pink-500 transition"
-                placeholder="Ej: Juanito23"
+                placeholder="Ej: Juan Pérez"
                 value={username}
                 onChange={(e) => setUsername(e.target.value)}
               />
@@ -369,11 +396,11 @@ export default function Signup() {
             {/* rut */}
             <div>
               <label className="block text-sm font-semibold text-gray-700">
-                RUT *
+                RUT {isVet ? "(opcional)" : "*"}
               </label>
               <input
                 type="text"
-                required
+                required={!isVet}
                 className="w-full px-4 py-3 mt-1 text-gray-900 border border-gray-300 rounded-xl shadow-sm focus:ring-2 focus:ring-pink-500 focus:border-pink-500 transition"
                 placeholder="12.345.678-9"
                 value={rut}
@@ -472,15 +499,12 @@ export default function Signup() {
                 placeholder="+56 9 1234 5678"
                 value={formatClMobileDisplay(phoneLocal)}
                 onChange={(e) => {
-                  // Limpia y trae a 8 dígitos locales sin símbolos
                   const local8 = normalizeClMobileFromAny(e.target.value);
                   setPhoneLocal(local8);
                 }}
                 onKeyDown={(e) => {
-                  // Permite navegación/edición
                   const ctl = ["Backspace","Delete","ArrowLeft","ArrowRight","Tab","Home","End"];
                   if (ctl.includes(e.key)) return;
-                  // Solo dígitos
                   if (!/^[0-9]$/.test(e.key)) e.preventDefault();
                 }}
               />
