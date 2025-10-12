@@ -53,52 +53,38 @@ export default function VetDashboard() {
   }
 
   // Ruta al detalle (si usas otra, cámbiala aquí)
-  const petDetailPath = (id) => `/pet/${id}`;
+  //const petDetailPath = (id) => `/pet/${id}`;
 
   return (
     <div className="p-8">
       <h1 className="text-3xl font-bold mb-6">Mis pacientes compartidos</h1>
 
       <ul className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
-        {rows.map((row) => {
-          const p = row.pet || {};
-          const img = p.image_url || "/placeholder-pet.jpg";
-          return (
-            <li
-              key={p.pet_id || row.pet_id}     // 👈 KEY ÚNICA
-              className="border rounded-2xl overflow-hidden bg-white shadow-sm"
-            >
-              <div className="h-44 bg-gray-50">
-                <img
-                  src={img}
-                  alt={p.name || "Mascota"}
-                  className="w-full h-full object-cover"
-                  onError={(e) => (e.currentTarget.src = "/placeholder-pet.jpg")}
-                />
-              </div>
+        {rows.map((row) => (
+        <div key={`${row.pet_id}-${row.member_role_id}`} className="rounded-2xl border shadow-sm p-4">
+            <img
+            src={row.pet?.image_url || "/placeholder-pet.jpg"}
+            alt={row.pet?.name || "Mascota"}
+            className="w-full h-56 object-cover rounded-xl"
+            />
 
-              <div className="p-4 space-y-1">
-                <h3 className="text-lg font-semibold">{p.name || "—"}</h3>
-                <p className="text-sm text-gray-600">
-                  Rol: <span className="font-medium">{row.member_role_id}</span>
-                </p>
-                {Array.isArray(row.permissions) && row.permissions.length > 0 && (
-                  <p className="text-xs text-gray-500">
-                    Permisos: {row.permissions.join(", ")}
-                  </p>
-                )}
-                <div className="pt-3">
-                  <Link
-                    to={petDetailPath(p.pet_id)}
-                    className="inline-block px-4 py-2 rounded-xl bg-black text-white text-sm hover:bg-gray-800"
-                  >
-                    Ver ficha
-                  </Link>
-                </div>
-              </div>
-            </li>
-          );
-        })}
+            <h3 className="mt-3 text-xl font-semibold">
+            {row.pet?.name || "—"}
+            </h3>
+
+            <p className="text-sm text-gray-600">Rol: {row.member_role_id}</p>
+            <p className="text-sm text-gray-500">
+            Permisos: {Array.isArray(row.permissions) ? row.permissions.join(", ") : "read"}
+            </p>
+
+            <Link
+            to={`/vet/pets/${row.pet?.pet_id}`}
+            className="inline-block mt-3 px-4 py-2 rounded-xl bg-black text-white"
+            >
+            Ver ficha
+            </Link>
+        </div>
+        ))}
       </ul>
     </div>
   );

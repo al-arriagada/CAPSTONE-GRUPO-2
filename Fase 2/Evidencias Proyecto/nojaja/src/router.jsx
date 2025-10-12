@@ -115,6 +115,15 @@ const router = createBrowserRouter([
           </ProtectedRoute>
         ),
       },
+
+            {
+        path: "pets/:id",
+        element: (
+          <ProtectedRoute>
+            <PetDetail /> {/* detalle */}
+          </ProtectedRoute>
+        ),
+      },
       // { path: "pets/:petId", element: <VetPetDetail /> }, // cuando lo tengas
     ],
   },

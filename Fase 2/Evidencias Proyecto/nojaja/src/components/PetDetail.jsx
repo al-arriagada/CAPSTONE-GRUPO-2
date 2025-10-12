@@ -4,6 +4,7 @@ import { useParams, useNavigate, Link } from "react-router-dom";
 import { supabase } from "../supabaseClient";
 import { useAuth } from "../context/AuthContext.jsx";
 
+
 export default function PetDetail() {
   const { id } = useParams();
   const navigate = useNavigate();
@@ -32,14 +33,17 @@ export default function PetDetail() {
   const [showEventModal, setShowEventModal] = useState(false);
   const [eventTypes, setEventTypes] = useState([]);
 
-  // === Colaboradores (nuevo) ===
+  // === Colaboradores (UI de compartir) ===
   const [members, setMembers] = useState([]);
   const [membersLoading, setMembersLoading] = useState(false);
   const [inviteEmail, setInviteEmail] = useState("");
-  const [inviteRole, setInviteRole] = useState("vet"); // vet por defecto
+  const [inviteRole, setInviteRole] = useState("vet");
   const [inviteBusy, setInviteBusy] = useState(false);
   const [memberMsg, setMemberMsg] = useState("");
   const [memberErr, setMemberErr] = useState("");
+
+  // === Membresía del usuario actual sobre esta mascota (permite permisos vet) ===
+  const [member, setMember] = useState(null);
 
   const [formData, setFormData] = useState({
     name: "",
@@ -55,6 +59,14 @@ export default function PetDetail() {
     status_id: "",
     current_weight: "",
   });
+
+  async function fetchOwnerContactByPet(petId) {
+    const { data, error } = await supabase
+      .schema("petcare")
+      .rpc("get_owner_contact", { p_pet_id: petId });
+    if (error) throw error;
+    return (data && data[0]) || null;
+  }
 
   async function fetchOwnerContact(userId) {
     const { data: base, error: e1 } = await supabase
@@ -139,6 +151,7 @@ export default function PetDetail() {
     loadPet();
   }, [id]);
 
+  // Carga perfil de la mascota
   const loadPet = async () => {
     setLoading(true);
     setError("");
@@ -175,8 +188,8 @@ export default function PetDetail() {
       });
 
       try {
-        const o = await fetchOwnerContact(data.user_id);
-        setOwner(o);
+        const oc = await fetchOwnerContactByPet(data.pet_id);
+        setOwner(oc);
         await loadRoutinesAndEvents(data.pet_id);
       } catch (e) {
         console.warn("No fue posible cargar owner/PII:", e?.message);
@@ -184,6 +197,22 @@ export default function PetDetail() {
     }
     setLoading(false);
   };
+
+  // Carga membresía del usuario sobre esta mascota
+  useEffect(() => {
+    const loadMembership = async () => {
+      if (!user || !id) return;
+      const { data, error } = await supabase
+        .schema("petcare")
+        .from("pet_member")
+        .select("member_role_id, permissions")
+        .eq("pet_id", id)
+        .eq("member_user_id", user.id)
+        .maybeSingle();
+      if (!error) setMember(data || null);
+    };
+    loadMembership();
+  }, [user, id]);
 
   const loadRoutinesAndEvents = async (petId) => {
     const [r, e] = await Promise.all([
@@ -314,6 +343,12 @@ export default function PetDetail() {
   };
 
   const handleArchive = async () => {
+    // Solo dueño puede archivar
+    if (!canEditCore) {
+      setError("No tienes permiso para archivar esta mascota.");
+      return;
+    }
+
     setDeleting(true);
     const { error } = await supabase
       .schema("petcare")
@@ -340,22 +375,20 @@ export default function PetDetail() {
   const getStatusName = (id) =>
     statuses.find((st) => st.status_id === id)?.display_name || "—";
 
-  // ========= COLABORADORES: funciones =========
+  // ========= COLABORADORES: funciones (lista/invitar) =========
   const loadMembers = async () => {
     setMembersLoading(true);
     setMemberErr("");
     try {
-      // 1) Trae rows de pet_member (sin invited_at)
       const { data: rows, error } = await supabase
         .schema("petcare")
         .from("pet_member")
         .select("pet_id, member_user_id, member_role_id, permissions, created_at")
         .eq("pet_id", id)
-        .order("created_at", { ascending: false }); // <-- usa created_at
+        .order("created_at", { ascending: false });
 
       if (error) throw error;
 
-      // 2) Enriquecer con nombre/email del usuario
       const ids = (rows || []).map(r => r.member_user_id).filter(Boolean);
       if (ids.length === 0) {
         setMembers(rows || []);
@@ -392,12 +425,12 @@ export default function PetDetail() {
     setInviteBusy(true);
     try {
       const { error } = await supabase
-      .schema("petcare")
-      .rpc("grant_pet_member_by_email", {
-        p_pet_id: id,
-        p_email: inviteEmail.trim(),
-        p_member_role: inviteRole,
-      });
+        .schema("petcare")
+        .rpc("grant_pet_member_by_email", {
+          p_pet_id: id,
+          p_email: inviteEmail.trim(),
+          p_member_role: inviteRole,
+        });
       if (error) throw error;
 
       setMemberMsg("Invitación enviada / acceso concedido ✅");
@@ -444,7 +477,6 @@ export default function PetDetail() {
     return <span className="px-2 py-0.5 text-xs rounded-full bg-gray-100 text-gray-700">{r}</span>;
   };
 
-  // carga miembros cuando entras a la tab
   useEffect(() => {
     if (activeTab === "colaboradores") loadMembers();
   }, [activeTab, id]);
@@ -470,7 +502,17 @@ export default function PetDetail() {
     );
   }
 
-  const canEdit = user && pet.user_id === user.id;
+  // ======= Permisos (dueño vs colaborador con write)
+  const isOwner = !!user && pet?.user_id === user.id;
+  const isMember = !!member;
+  const memberCanWrite = Array.isArray(member?.permissions)
+    ? member.permissions.includes("write")
+    : false;
+
+  const canEditCore = isOwner;                   // editar/eliminar ficha solo dueño
+  const canAddClinical = isOwner || memberCanWrite; // eventos/documentos
+  const canEdit = canEditCore;                   // mantener alias que ya usabas
+
   const age = calculateAge(pet.birth_date);
 
   return (
@@ -525,6 +567,13 @@ export default function PetDetail() {
           <div className="mt-4">
             <h1 className="text-3xl font-bold">{pet.name}</h1>
             <p className="text-gray-500 text-sm mt-1">Perfil de mascota</p>
+
+            {/* Badge de colaborador */}
+            {isMember && !isOwner && (
+              <div className="mt-2 inline-flex items-center gap-2 rounded-full border px-3 py-1 text-xs text-gray-600">
+                Acceso como colaborador ({member?.member_role_id}) — {memberCanWrite ? "write" : "read"}
+              </div>
+            )}
           </div>
         </div>
       </div>
@@ -620,7 +669,7 @@ export default function PetDetail() {
                 >
                   Historial médico
                 </button>
-                <button
+                {canEdit && (<button
                   onClick={() => setActiveTab("rutinas")}
                   className={`flex-1 px-6 py-4 text-sm font-medium transition-colors ${activeTab === "rutinas"
                     ? "border-b-2 border-black text-black"
@@ -628,9 +677,8 @@ export default function PetDetail() {
                     }`}
                 >
                   Rutinas y eventos
-                </button>
-                {/* NUEVA pestaña */}
-                <button
+                </button>)}
+                {canEdit && (<button
                   onClick={() => setActiveTab("colaboradores")}
                   className={`flex-1 px-6 py-4 text-sm font-medium transition-colors ${activeTab === "colaboradores"
                     ? "border-b-2 border-black text-black"
@@ -638,7 +686,7 @@ export default function PetDetail() {
                     }`}
                 >
                   Colaboradores
-                </button>
+                </button>)}
               </div>
             </div>
 
@@ -787,10 +835,10 @@ export default function PetDetail() {
                 </div>
               )}
 
-              {activeTab === "rutinas" && (
+              {canEdit && activeTab === "rutinas" && (
                 <div>
                   <h3 className="text-xl font-semibold mb-6">Rutinas y Eventos</h3>
-                  <div className="bg-gray-50 p-6 rounded-2xl border shadow-sm">
+                <div className="bg-gray-50 p-6 rounded-2xl border shadow-sm">
                     <h4 className="text-lg font-medium mb-4">Calendario</h4>
                     <Calendar
                       routines={routines}
@@ -806,8 +854,7 @@ export default function PetDetail() {
                 </div>
               )}
 
-              {/* === NUEVO: pestaña Colaboradores === */}
-              {activeTab === "colaboradores" && (
+              {canEdit && activeTab === "colaboradores" && (
                 <div className="space-y-6">
                   <div className="flex items-center gap-3 mb-2">
                     <span className="text-2xl">🤝</span>
@@ -1119,6 +1166,7 @@ export default function PetDetail() {
         onClose={() => setShowEventModal(false)}
         petId={pet.pet_id}
         eventTypes={eventTypes}
+        canAdd={canAddClinical}  // 👈 permisos: dueño o miembro con "write"
         onEventAdded={async () => {
           const refreshed = await loadEventsByDate(pet.pet_id, selectedDate);
           setDayEvents(refreshed);
@@ -1386,7 +1434,7 @@ function Calendar({ routines = [], events = [], onDayClick }) {
   );
 }
 
-function EventModal({ open, date, events, onClose, petId, eventTypes, onEventAdded }) {
+function EventModal({ open, date, events, onClose, petId, eventTypes, onEventAdded, canAdd }) {
   const [newEvent, setNewEvent] = React.useState({
     type_id: "",
     details: "",
@@ -1410,6 +1458,12 @@ function EventModal({ open, date, events, onClose, petId, eventTypes, onEventAdd
     setSaving(true);
     setError("");
     setSuccess("");
+
+    if (!canAdd) {
+      setError("No tienes permiso para registrar eventos.");
+      setSaving(false);
+      return;
+    }
 
     if (!newEvent.type_id) {
       setError("Debes seleccionar un tipo de evento.");
@@ -1517,68 +1571,76 @@ function EventModal({ open, date, events, onClose, petId, eventTypes, onEventAdd
         <form onSubmit={handleSubmit} className="mt-6 pt-4 border-t">
           <h4 className="text-sm font-medium mb-3">Registrar nuevo evento</h4>
 
+          {!canAdd && (
+            <p className="mb-3 text-sm text-gray-600">
+              Solo el dueño o un colaborador con permiso <b>write</b> puede registrar nuevos eventos.
+            </p>
+          )}
+
           {error && <p className="text-red-600 text-sm mb-2">{error}</p>}
           {success && <p className="text-green-600 text-sm mb-2">{success}</p>}
 
-          <div className="space-y-3">
-            <select
-              value={newEvent.type_id}
-              onChange={(e) => setNewEvent({ ...newEvent, type_id: e.target.value })}
-              className="w-full border rounded-lg px-3 py-2 text-sm"
-            >
-              <option value="">Selecciona tipo de evento...</option>
-              {eventTypes.map((t) => (
-                <option key={t.event_type_id} value={t.event_type_id}>
-                  {t.display_name}
-                </option>
-              ))}
-            </select>
+          <fieldset disabled={!canAdd} className={!canAdd ? "opacity-60 pointer-events-none" : ""}>
+            <div className="space-y-3">
+              <select
+                value={newEvent.type_id}
+                onChange={(e) => setNewEvent({ ...newEvent, type_id: e.target.value })}
+                className="w-full border rounded-lg px-3 py-2 text-sm"
+              >
+                <option value="">Selecciona tipo de evento...</option>
+                {eventTypes.map((t) => (
+                  <option key={t.event_type_id} value={t.event_type_id}>
+                    {t.display_name}
+                  </option>
+                ))}
+              </select>
 
-            <textarea
-              value={newEvent.details}
-              onChange={(e) => setNewEvent({ ...newEvent, details: e.target.value })}
-              placeholder="Detalles del evento..."
-              className="w-full border rounded-lg px-3 py-2 text-sm"
-              rows={3}
-            />
+              <textarea
+                value={newEvent.details}
+                onChange={(e) => setNewEvent({ ...newEvent, details: e.target.value })}
+                placeholder="Detalles del evento..."
+                className="w-full border rounded-lg px-3 py-2 text-sm"
+                rows={3}
+              />
 
-            {eventTypes.find(
-              (t) =>
-                t.event_type_id === newEvent.type_id &&
-                t.display_name.toLowerCase().includes("vacuna")
-            ) && (
-                <div>
-                  <label className="block text-sm text-gray-700 mb-1">
-                    Próxima dosis (opcional)
-                  </label>
-                  <input
-                    type="date"
-                    value={newEvent.vaccine_next}
-                    onChange={(e) =>
-                      setNewEvent({ ...newEvent, vaccine_next: e.target.value })
-                    }
-                    className="w-full border rounded-lg px-3 py-2 text-sm"
-                  />
-                </div>
-              )}
-          </div>
+              {eventTypes.find(
+                (t) =>
+                  t.event_type_id === newEvent.type_id &&
+                  t.display_name.toLowerCase().includes("vacuna")
+              ) && (
+                  <div>
+                    <label className="block text-sm text-gray-700 mb-1">
+                      Próxima dosis (opcional)
+                    </label>
+                    <input
+                      type="date"
+                      value={newEvent.vaccine_next}
+                      onChange={(e) =>
+                        setNewEvent({ ...newEvent, vaccine_next: e.target.value })
+                      }
+                      className="w-full border rounded-lg px-3 py-2 text-sm"
+                    />
+                  </div>
+                )}
+            </div>
 
-          <div className="mt-4 flex justify-end gap-2">
-            <button
-              type="button"
-              onClick={onClose}
-              className="px-4 py-2 border rounded-lg text-sm hover:bg-gray-50"
-            >
-              Cancelar
-            </button>
-            <button
-              type="submit"
-              disabled={saving}
-              className="px-4 py-2 bg-green-600 text-white rounded-lg text-sm hover:bg-green-700 disabled:opacity-50"
-            >
-              {saving ? "Guardando..." : "Guardar evento"}
-            </button>
-          </div>
+            <div className="mt-4 flex justify-end gap-2">
+              <button
+                type="button"
+                onClick={onClose}
+                className="px-4 py-2 border rounded-lg text-sm hover:bg-gray-50"
+              >
+                Cancelar
+              </button>
+              <button
+                type="submit"
+                disabled={saving || !canAdd}
+                className="px-4 py-2 bg-green-600 text-white rounded-lg text-sm hover:bg-green-700 disabled:opacity-50"
+              >
+                {saving ? "Guardando..." : "Guardar evento"}
+              </button>
+            </div>
+          </fieldset>
         </form>
       </div>
     </div>
