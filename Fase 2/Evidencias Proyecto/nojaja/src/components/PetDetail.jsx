@@ -614,6 +614,20 @@ export default function PetDetail() {
       return;
     }
 
+        // 🚨 AÑADIR LA VALIDACIÓN DEL TIPO DE ARCHIVO
+    if (file.type !== "application/pdf") {
+        setError("Error: Solo se permiten archivos PDF.");
+        setUploadingFile(false);
+        event.target.value = null; // Limpiar input
+        return;
+    }
+
+    if (!newDocumentTypeId) {
+        setError("Por favor, selecciona un tipo de documento antes de subir el archivo.");
+        return;
+    }
+    
+
     setUploadingFile(true);
     setError("");
     setSuccess("");
