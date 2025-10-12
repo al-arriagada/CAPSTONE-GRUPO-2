@@ -1,5 +1,5 @@
 // src/components/PetDetail.jsx
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useState, useCallback } from "react";
 import { useParams, useNavigate, Link } from "react-router-dom";
 import { supabase } from "../supabaseClient";
 import { useAuth } from "../context/AuthContext.jsx";
@@ -46,9 +46,11 @@ export default function PetDetail() {
   // === Membresía del usuario actual sobre esta mascota (permite permisos vet) ===
   const [member, setMember] = useState(null);
 
-  // === Archivos PDF ===
-  const [pdfFile, setPdfFile] = useState(null);
-  const [pdfUrl, setPdfUrl] = useState("");
+  // === Archivos PDF y Documentos ===
+  const [documents, setDocuments] = useState([]); 
+  const [uploadingFile, setUploadingFile] = useState(false);
+  const [newDocumentTypeId, setNewDocumentTypeId] = useState(""); 
+  const [docTypes, setDocTypes] = useState([]); 
 
 
   const [formData, setFormData] = useState({
@@ -120,47 +122,56 @@ export default function PetDetail() {
     return true;
   };
 
-  useEffect(() => {
-    loadCatalogs();
-    loadEventTypes();
-  }, []);
+  
+  /**
+   * Loads all documents associated with the pet from the 'document' table.
+   * CORREGIDO: Uso de .is() para NULL
+   */
+  const loadDocuments = useCallback(async (petId) => {
+    if (!petId) return;
+    try {
+      const { data, error } = await supabase
+        .schema("petcare")
+        .from("document")
+        .select("doc_id, doc_category_id, title, storage_path, created_at, owner_pet_id, owner_user_id") 
+        .eq("owner_pet_id", petId) 
+        .is("deleted_at", null) // ✅ CORRECCIÓN CLAVE: Resuelve error 400
+        .order("created_at", { ascending: false });
 
-  const loadCatalogs = async () => {
-    const [sp, sx, or, st] = await Promise.all([
-      supabase.schema("petcare").from("species_catalog").select("*"),
-      supabase.schema("petcare").from("sex_catalog").select("*"),
-      supabase.schema("petcare").from("pet_origin_catalog").select("*"),
-      supabase.schema("petcare").from("pet_status_catalog").select("*"),
+      if (error) throw error;
+      
+      const enrichedDocuments = (data || []).map(doc => {
+        const { data: { publicUrl } } = supabase.storage
+          .from("pet-documents")
+          .getPublicUrl(doc.storage_path);
+        return {
+          ...doc,
+          public_url: publicUrl 
+        };
+      });
+
+      setDocuments(enrichedDocuments);
+
+    } catch (e) {
+      console.error("Error cargando documentos:", e);
+    }
+  }, [setDocuments]);
+
+
+  const loadRoutinesAndEvents = async (petId) => {
+    const [r, e] = await Promise.all([
+      supabase.schema("petcare").from("routine").select("*").eq("pet_id", petId),
+      supabase.schema("petcare").from("event").select("*").eq("pet_id", petId),
     ]);
 
-    if (sp.data) setSpecies(sp.data);
-    if (sx.data) setSexes(sx.data);
-    if (or.data) setOrigins(or.data);
-    if (st.data) setStatuses(st.data);
+    if (r.data) setRoutines(r.data);
+    if (e.data) setEvents(e.data);
   };
-
   
-
-  const loadEventTypes = async () => {
-    const { data, error } = await supabase
-      .schema("petcare")
-      .from("event_type_catalog")
-      .select("event_type_id, display_name")
-      .order("display_name", { ascending: true });
-
-    if (error) {
-      console.error("❌ Error cargando tipos de evento:", error);
-    } else {
-      setEventTypes(data || []);
-    }
-  };
-
-  useEffect(() => {
-    loadPet();
-  }, [id]);
-
-  // Carga perfil de la mascota
-  const loadPet = async () => {
+  /**
+   * Loads the pet profile.
+   */
+  const loadPet = useCallback(async () => {
     setLoading(true);
     setError("");
 
@@ -199,12 +210,72 @@ export default function PetDetail() {
         const oc = await fetchOwnerContactByPet(data.pet_id);
         setOwner(oc);
         await loadRoutinesAndEvents(data.pet_id);
+        loadDocuments(data.pet_id); 
       } catch (e) {
         console.warn("No fue posible cargar owner/PII:", e?.message);
       }
     }
     setLoading(false);
+  }, [id, loadDocuments]); // loadDocuments es dependencia
+
+
+  useEffect(() => {
+    loadCatalogs();
+    loadEventTypes();
+    loadDocTypes();
+  }, []);
+
+  const loadCatalogs = async () => {
+    const [sp, sx, or, st] = await Promise.all([
+      supabase.schema("petcare").from("species_catalog").select("*"),
+      supabase.schema("petcare").from("sex_catalog").select("*"),
+      supabase.schema("petcare").from("pet_origin_catalog").select("*"),
+      supabase.schema("petcare").from("pet_status_catalog").select("*"),
+    ]);
+
+    if (sp.data) setSpecies(sp.data);
+    if (sx.data) setSexes(sx.data);
+    if (or.data) setOrigins(or.data);
+    if (st.data) setStatuses(st.data);
   };
+
+  
+  const loadDocTypes = async () => {
+    const { data, error } = await supabase
+      .schema("petcare")
+      .from("doc_type_catalog")
+      .select("doc_type_id, display_name")
+      .order("display_name", { ascending: true });
+
+    if (error) {
+      console.error("❌ Error cargando tipos de documento:", error);
+    } else {
+      setDocTypes(data || []);
+      const medical = data.find(d => d.doc_type_id === 'medical');
+      if (medical) setNewDocumentTypeId(medical.doc_type_id);
+    }
+  };
+
+
+  const loadEventTypes = async () => {
+    const { data, error } = await supabase
+      .schema("petcare")
+      .from("event_type_catalog")
+      .select("event_type_id, display_name")
+      .order("display_name", { ascending: true });
+
+    if (error) {
+      console.error("❌ Error cargando tipos de evento:", error);
+    } else {
+      setEventTypes(data || []);
+    }
+  };
+
+  // useEffect PRINCIPAL: usa la función estable loadPet
+  useEffect(() => {
+    loadPet();
+  }, [loadPet]); 
+
 
   // Carga membresía del usuario sobre esta mascota
   useEffect(() => {
@@ -222,15 +293,6 @@ export default function PetDetail() {
     loadMembership();
   }, [user, id]);
 
-  const loadRoutinesAndEvents = async (petId) => {
-    const [r, e] = await Promise.all([
-      supabase.schema("petcare").from("routine").select("*").eq("pet_id", petId),
-      supabase.schema("petcare").from("event").select("*").eq("pet_id", petId),
-    ]);
-
-    if (r.data) setRoutines(r.data);
-    if (e.data) setEvents(e.data);
-  };
 
   const loadEventsByDate = async (petId, date) => {
     const startOfDay = new Date(date);
@@ -242,10 +304,10 @@ export default function PetDetail() {
       .schema("petcare")
       .from("event")
       .select(`
-      *,
-      event_type_catalog(display_name),
-      vaccine_event(next_due_date)
-    `)
+        *,
+        event_type_catalog(display_name),
+        vaccine_event(next_due_date)
+      `)
       .eq("pet_id", petId)
       .gte("ts", startOfDay.toISOString())
       .lte("ts", endOfDay.toISOString())
@@ -517,48 +579,95 @@ export default function PetDetail() {
     ? member.permissions.includes("write")
     : false;
 
-  const canEditCore = isOwner;                   // editar/eliminar ficha solo dueño
+  const canEditCore = isOwner;                   // editar/eliminar ficha solo dueño
   const canAddClinical = isOwner || memberCanWrite; // eventos/documentos
-  const canEdit = canEditCore;                   // mantener alias que ya usabas
+  const canEdit = canEditCore;                   // mantener alias que ya usabas
 
   const age = calculateAge(pet.birth_date);
 
 
+  /**
+   * Handles download using the public_url stored in the 'document' record.
+   */
+  const handleDocumentDownload = (doc) => {
+    if (!doc.public_url) return;
+    const link = document.createElement("a");
+    link.href = doc.public_url;
+    link.download = doc.title; 
+    link.target = "_blank"; 
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
+
+
+  /**
+   * Uploads file to storage, checks for doc type, and inserts a record into the 'document' table.
+   * CORREGIDO: owner_user_id = null
+   */
   const handlePdfUpload = async (event) => {
     const file = event.target.files[0];
-    if (!file) return;
-    setPdfFile(file);
+    if (!file || !canAddClinical || !pet || !user) return; 
 
-    const filePath = `pet_files/${pet.pet_id}/${file.name}`;
-    const { error } = await supabase
-      .storage
-      .from("pet-documents")   // <-- aquí
-      .upload(filePath, file, { upsert: true });
-
-    if (error) {
-      alert("Error subiendo archivo: " + error.message);
+    if (!newDocumentTypeId) {
+      setError("Por favor, selecciona un tipo de documento antes de subir el archivo.");
       return;
     }
-    alert("Archivo subido exitosamente");
-    await loadPdfUrl(pet.pet_id);
-  };
 
-  const loadPdfUrl = async (petId) => {
+    setUploadingFile(true);
+    setError("");
+    setSuccess("");
+    
+    // 1. Upload file to Supabase Storage 
+    const folderPath = `pet_files/${pet.pet_id}`;
+    const fileName = `${new Date().getTime()}_${file.name}`;
+    const filePath = `${folderPath}/${fileName}`;
+    
+    const { error: uploadError } = await supabase
+      .storage
+      .from("pet-documents")
+      .upload(filePath, file, { 
+        upsert: true,
+        cacheControl: "3600"
+      });
+
+    if (uploadError) {
+      setUploadingFile(false);
+      setError("Error subiendo archivo: " + uploadError.message);
+      return;
+    }
+
+    // 2. Insert record into the 'document' table
     try {
-      const { data } = await supabase.storage.from("pet_documents").list(`pet_files/${petId}`);
-      if (data?.length > 0) {
-        const { publicUrl } = supabase.storage.from("pet_documents").getPublicUrl(`pet_documents/${petId}/${data[0].name}`);
-        setPdfUrl(publicUrl);
-      } else { setPdfUrl(""); }
-    } catch (e) { console.error("Error cargando PDF:", e); setPdfUrl(""); }
-  };
+      const { error: insertError } = await supabase
+        .schema("petcare")
+        .from("document")
+        .insert({
+          owner_kind: 'pet', 
+          owner_user_id: null, // <<-- ¡CORRECCIÓN! Para pasar el CHECK constraint
+          owner_pet_id: pet.pet_id,
+          title: file.name,
+          storage_path: filePath,
+          created_by: user.id, 
+          doc_category_id: newDocumentTypeId, 
+          hash_sha256: null,
+        });
 
-  const handlePdfDownload = () => {
-    if (!pdfUrl) return;
-    const link = document.createElement("a");
-    link.href = pdfUrl;
-    link.download = pdfFile?.name || "ficha_mascota.pdf";
-    link.click();
+      if (insertError) {
+        console.error("❌ Error de inserción en tabla document:", insertError);
+        throw insertError;
+      }
+
+      setSuccess(`Archivo '${file.name}' subido y registrado exitosamente.`);
+      await loadDocuments(pet.pet_id);
+      setNewDocumentTypeId(''); 
+
+    } catch (insertError) {
+      setError(`Error DB al registrar documento: ${insertError.message || 'Revise la consola del navegador.'}`);
+    }
+
+    setUploadingFile(false);
+    event.target.value = null; 
   };
   
 
@@ -872,33 +981,83 @@ export default function PetDetail() {
               )}
 
               {activeTab === "historial" && (
-                <div className="space-y-4">
+                <div className="space-y-6">
                   <h3 className="text-xl font-semibold mb-6">Historial Médico</h3>
 
-                  {/* Subir PDF */}
-                  <div>
-                    <label className="block mb-2 text-gray-700">Subir ficha médica (PDF)</label>
-                    <input
-                      type="file"
-                      accept="application/pdf"
-                      onChange={handlePdfUpload}
-                      className="border rounded px-3 py-2"
-                    />
-                  </div>
+                  {/* Subir Documento */}
+                  <div className="border p-4 rounded-xl bg-gray-50">
+                    <label className="block mb-2 text-gray-700 font-medium">Subir Documento Médico (PDF/Imagen)</label>
+                    
+                    {!canAddClinical && (
+                        <p className="text-sm text-red-500 mb-3">
+                          No tienes permisos para subir documentos.
+                        </p>
+                    )}
 
-                  {/* Descargar PDF */}
-                  {pdfUrl ? (
-                    <div>
-                      <button
-                        onClick={handlePdfDownload}
-                        className="mt-2 px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700"
-                      >
-                        Descargar ficha médica
-                      </button>
-                    </div>
-                  ) : (
-                    <p className="text-gray-500 mt-2">No hay registros médicos disponibles.</p>
-                  )}
+                    <fieldset disabled={!canAddClinical || uploadingFile}>
+                        {/* Selector de Tipo de Documento */}
+                        <select
+                          value={newDocumentTypeId}
+                          onChange={(e) => {
+                            setNewDocumentTypeId(e.target.value);
+                            setError(""); 
+                          }}
+                          className="w-full border rounded-xl px-3 py-2 text-sm mb-3 bg-white"
+                          required
+                        >
+                          <option value="">Selecciona Tipo de Documento...</option>
+                          {docTypes.map(type => (
+                            <option key={type.doc_type_id} value={type.doc_type_id}>
+                              {type.display_name}
+                            </option>
+                          ))}
+                        </select>
+
+                        {/* Input de Archivo */}
+                        <input
+                          type="file"
+                          accept="application/pdf,image/*" 
+                          onChange={handlePdfUpload}
+                          className="border rounded px-3 py-2 text-sm w-full bg-white"
+                          disabled={!newDocumentTypeId}
+                        />
+                    </fieldset>
+
+                    {uploadingFile && (
+                      <p className="text-sm text-blue-600 mt-2">Subiendo archivo, por favor espera...</p>
+                    )}
+                  </div>
+                  
+                  {/* Lista de Documentos */}
+                  <div className="mt-6">
+                    <h4 className="font-semibold mb-3 border-b pb-2">Documentos Registrados</h4>
+                    {documents.length > 0 ? (
+                      <ul className="space-y-3">
+                        {documents.map((doc) => (
+                          <li key={doc.doc_id} className="flex justify-between items-center p-3 border rounded-lg bg-white">
+                            <div className="text-sm">
+                              <p className="font-medium text-gray-900">{doc.title}</p>
+                              <p className="text-xs text-gray-500">
+                                Tipo: {docTypes.find(t => t.doc_type_id === doc.doc_category_id)?.display_name || doc.doc_category_id}
+                              </p>
+                              <p className="text-xs text-gray-500">
+                                Subido el {new Date(doc.created_at).toLocaleDateString("es-CL")}
+                              </p>
+                            </div>
+                            <button
+                              onClick={() => handleDocumentDownload(doc)}
+                              className="px-3 py-1.5 bg-blue-600 text-white rounded-lg text-xs hover:bg-blue-700 disabled:opacity-50"
+                              disabled={!doc.public_url}
+                            >
+                              Descargar
+                            </button>
+                          </li>
+                        ))}
+                      </ul>
+                    ) : (
+                      <p className="text-gray-500 text-sm">No hay documentos médicos registrados.</p>
+                    )}
+                  </div>
                 </div>
               )}
 
@@ -906,18 +1065,18 @@ export default function PetDetail() {
                 <div>
                   <h3 className="text-xl font-semibold mb-6">Rutinas y Eventos</h3>
                 <div className="bg-gray-50 p-6 rounded-2xl border shadow-sm">
-                    <h4 className="text-lg font-medium mb-4">Calendario</h4>
-                    <Calendar
-                      routines={routines}
-                      events={events}
-                      onDayClick={async (dayDate) => {
-                        const data = await loadEventsByDate(pet.pet_id, dayDate);
-                        setSelectedDate(dayDate);
-                        setDayEvents(data);
-                        setShowEventModal(true);
-                      }}
-                    />
-                  </div>
+                  <h4 className="text-lg font-medium mb-4">Calendario</h4>
+                  <Calendar
+                    routines={routines}
+                    events={events}
+                    onDayClick={async (dayDate) => {
+                      const data = await loadEventsByDate(pet.pet_id, dayDate);
+                      setSelectedDate(dayDate);
+                      setDayEvents(data);
+                      setShowEventModal(true);
+                    }}
+                  />
+                </div>
                 </div>
               )}
 
@@ -1233,7 +1392,7 @@ export default function PetDetail() {
         onClose={() => setShowEventModal(false)}
         petId={pet.pet_id}
         eventTypes={eventTypes}
-        canAdd={canAddClinical}  // 👈 permisos: dueño o miembro con "write"
+        canAdd={canAddClinical}  // 👈 permisos: dueño o miembro con "write"
         onEventAdded={async () => {
           const refreshed = await loadEventsByDate(pet.pet_id, selectedDate);
           setDayEvents(refreshed);
@@ -1253,13 +1412,15 @@ function InfoItem({ label, value }) {
   );
 }
 
-function EditField({ label, children }) {
+function EditField({ label, children, error, helpText }) {
   return (
     <div>
       <label className="block text-sm font-medium text-gray-700 mb-2">
         {label}
       </label>
       {children}
+      {error && <p className="mt-1 text-sm text-red-600">{error}</p>}
+      {helpText && !error && <p className="mt-1 text-xs text-gray-500">{helpText}</p>}
     </div>
   );
 }
