@@ -3,6 +3,7 @@ import React, { useEffect, useState } from "react";
 import { useParams, useNavigate, Link } from "react-router-dom";
 import { supabase } from "../supabaseClient";
 import { useAuth } from "../context/AuthContext.jsx";
+import { jsPDF } from "jspdf";
 
 
 export default function PetDetail() {
@@ -44,6 +45,11 @@ export default function PetDetail() {
 
   // === Membresía del usuario actual sobre esta mascota (permite permisos vet) ===
   const [member, setMember] = useState(null);
+
+  // === Archivos PDF ===
+  const [pdfFile, setPdfFile] = useState(null);
+  const [pdfUrl, setPdfUrl] = useState("");
+
 
   const [formData, setFormData] = useState({
     name: "",
@@ -132,6 +138,8 @@ export default function PetDetail() {
     if (or.data) setOrigins(or.data);
     if (st.data) setStatuses(st.data);
   };
+
+  
 
   const loadEventTypes = async () => {
     const { data, error } = await supabase
@@ -515,6 +523,45 @@ export default function PetDetail() {
 
   const age = calculateAge(pet.birth_date);
 
+
+  const handlePdfUpload = async (event) => {
+    const file = event.target.files[0];
+    if (!file) return;
+    setPdfFile(file);
+
+    const filePath = `pet_files/${pet.pet_id}/${file.name}`;
+    const { error } = await supabase
+      .storage
+      .from("pet-documents")   // <-- aquí
+      .upload(filePath, file, { upsert: true });
+
+    if (error) {
+      alert("Error subiendo archivo: " + error.message);
+      return;
+    }
+    alert("Archivo subido exitosamente");
+    await loadPdfUrl(pet.pet_id);
+  };
+
+  const loadPdfUrl = async (petId) => {
+    try {
+      const { data } = await supabase.storage.from("pet_documents").list(`pet_files/${petId}`);
+      if (data?.length > 0) {
+        const { publicUrl } = supabase.storage.from("pet_documents").getPublicUrl(`pet_documents/${petId}/${data[0].name}`);
+        setPdfUrl(publicUrl);
+      } else { setPdfUrl(""); }
+    } catch (e) { console.error("Error cargando PDF:", e); setPdfUrl(""); }
+  };
+
+  const handlePdfDownload = () => {
+    if (!pdfUrl) return;
+    const link = document.createElement("a");
+    link.href = pdfUrl;
+    link.download = pdfFile?.name || "ficha_mascota.pdf";
+    link.click();
+  };
+  
+
   return (
     <div className="min-h-screen bg-gray-50">
       <div className="bg-white border-b">
@@ -825,13 +872,33 @@ export default function PetDetail() {
               )}
 
               {activeTab === "historial" && (
-                <div>
-                  <h3 className="text-xl font-semibold mb-6">
-                    Historial Médico
-                  </h3>
-                  <p className="text-gray-500">
-                    No hay registros médicos disponibles.
-                  </p>
+                <div className="space-y-4">
+                  <h3 className="text-xl font-semibold mb-6">Historial Médico</h3>
+
+                  {/* Subir PDF */}
+                  <div>
+                    <label className="block mb-2 text-gray-700">Subir ficha médica (PDF)</label>
+                    <input
+                      type="file"
+                      accept="application/pdf"
+                      onChange={handlePdfUpload}
+                      className="border rounded px-3 py-2"
+                    />
+                  </div>
+
+                  {/* Descargar PDF */}
+                  {pdfUrl ? (
+                    <div>
+                      <button
+                        onClick={handlePdfDownload}
+                        className="mt-2 px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700"
+                      >
+                        Descargar ficha médica
+                      </button>
+                    </div>
+                  ) : (
+                    <p className="text-gray-500 mt-2">No hay registros médicos disponibles.</p>
+                  )}
                 </div>
               )}
 
