@@ -1,13 +1,12 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { supabase } from "../supabaseClient";
 import { useAuth } from "../context/AuthContext";
 import { useParams } from "react-router-dom";
 
 
-
-export default function EventLog({ petId: propPetId  }) {
+export default function EventLog({ petId: propPetId }) {
   const { id } = useParams();
-  const petId = propPetId || id;  // 👈 toma el id de la URL
+  const petId = propPetId || id; 	
   const { user } = useAuth();
   const [events, setEvents] = useState([]);
   const [eventTypes, setEventTypes] = useState([]);
@@ -15,7 +14,7 @@ export default function EventLog({ petId: propPetId  }) {
   const [showForm, setShowForm] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
-  
+
 
   const [formData, setFormData] = useState({
     user_id: "",
@@ -36,16 +35,6 @@ export default function EventLog({ petId: propPetId  }) {
     vet_clinic_phone: "",
   });
 
-  useEffect(() => {
-    loadEventTypes();
-    if (petId) {
-      loadEvents();
-    } else {
-      setEvents([]);
-      setLoading(false);
-    }
-  }, [petId]);
-
   const loadEventTypes = async () => {
     const { data, error } = await supabase
       .schema("petcare")
@@ -63,7 +52,10 @@ export default function EventLog({ petId: propPetId  }) {
     }
   };
 
-  const loadEvents = async () => {
+  /**
+   * 🚨 ESTABILIZADO: loadEvents con useCallback
+   */
+  const loadEvents = useCallback(async () => {
     setLoading(true);
     const { data, error } = await supabase
       .schema("petcare")
@@ -75,7 +67,7 @@ export default function EventLog({ petId: propPetId  }) {
           event_type_id,
           display_name
         )
-      `
+        `
       )
       .eq("pet_id", petId)
       .order("ts", { ascending: false });
@@ -87,7 +79,19 @@ export default function EventLog({ petId: propPetId  }) {
       setEvents(data || []);
     }
     setLoading(false);
-  };
+  }, [petId]); 
+
+
+  useEffect(() => {
+    loadEventTypes();
+    if (petId) {
+      loadEvents();
+    } else {
+      setEvents([]);
+      setLoading(false);
+    }
+  }, [petId, loadEvents]);
+
 
   const getEventIcon = (eventTypeId) => {
     const icons = {
@@ -122,7 +126,7 @@ export default function EventLog({ petId: propPetId  }) {
 
     try {
       const eventData = {
-        pet_id: petId, // ✅ usamos el prop correctamente
+        pet_id: petId, 
         user_id: user.id,
         e_type_id: formData.e_type_id,
         ts: new Date().toISOString(),
@@ -188,7 +192,7 @@ export default function EventLog({ petId: propPetId  }) {
         vet_clinic_phone: "",
       });
       setShowForm(false);
-      loadEvents();
+      loadEvents(); 
     } catch (err) {
       console.error("Error guardando evento:", err);
       setError(`Error: ${err.message}`);
@@ -200,6 +204,7 @@ export default function EventLog({ petId: propPetId  }) {
   const handleDelete = async (eventId) => {
     if (!confirm("¿Eliminar este registro?")) return;
 
+    // 1. Ejecución del DELETE en la base de datos
     const { error } = await supabase
       .schema("petcare")
       .from("event")
@@ -207,10 +212,13 @@ export default function EventLog({ petId: propPetId  }) {
       .eq("event_id", eventId);
 
     if (error) {
-      alert("Error al eliminar");
+      // 🚨 Muestra un mensaje más útil si es un problema de permisos.
+      alert(`Error al eliminar: ${error.message || 'Verifique su conexión o permisos RLS.'}`);
+      console.error("Error eliminando evento:", error);
       return;
     }
 
+    // 2. Actualiza la lista de eventos
     loadEvents();
   };
 
@@ -227,58 +235,58 @@ export default function EventLog({ petId: propPetId  }) {
         {["vaccine_administered", "medication_dose", "routine_check"].includes(
           typeId
         ) && (
-          <>
-            <div className="md:col-span-2">
-              <h4 className="font-medium mb-3">
-                Datos de la Clínica Veterinaria (Opcional)
-              </h4>
-            </div>
+            <>
+              <div className="md:col-span-2">
+                <h4 className="font-medium mb-3">
+                  Datos de la Clínica Veterinaria (Opcional)
+                </h4>
+              </div>
 
-            <div>
-              <label className="block text-sm font-medium mb-2">
-                Nombre de la clínica
-              </label>
-              <input
-                type="text"
-                value={formData.vet_clinic_name}
-                onChange={(e) =>
-                  setFormData({ ...formData, vet_clinic_name: e.target.value })
-                }
-                className="w-full px-3 py-2 border rounded-lg"
-                placeholder="Ej: Clínica Veterinaria Los Andes"
-              />
-            </div>
+              <div>
+                <label className="block text-sm font-medium mb-2">
+                  Nombre de la clínica
+                </label>
+                <input
+                  type="text"
+                  value={formData.vet_clinic_name}
+                  onChange={(e) =>
+                    setFormData({ ...formData, vet_clinic_name: e.target.value })
+                  }
+                  className="w-full px-3 py-2 border rounded-lg"
+                  placeholder="Ej: Clínica Veterinaria Los Andes"
+                />
+              </div>
 
-            <div>
-              <label className="block text-sm font-medium mb-2">Teléfono</label>
-              <input
-                type="tel"
-                value={formData.vet_clinic_phone}
-                onChange={(e) =>
-                  setFormData({ ...formData, vet_clinic_phone: e.target.value })
-                }
-                className="w-full px-3 py-2 border rounded-lg"
-                placeholder="Ej: +56 9 1234 5678"
-              />
-            </div>
+              <div>
+                <label className="block text-sm font-medium mb-2">Teléfono</label>
+                <input
+                  type="tel"
+                  value={formData.vet_clinic_phone}
+                  onChange={(e) =>
+                    setFormData({ ...formData, vet_clinic_phone: e.target.value })
+                  }
+                  className="w-full px-3 py-2 border rounded-lg"
+                  placeholder="Ej: +56 9 1234 5678"
+                />
+              </div>
 
-            <div className="md:col-span-2">
-              <label className="block text-sm font-medium mb-2">Dirección</label>
-              <input
-                type="text"
-                value={formData.vet_clinic_address}
-                onChange={(e) =>
-                  setFormData({
-                    ...formData,
-                    vet_clinic_address: e.target.value,
-                  })
-                }
-                className="w-full px-3 py-2 border rounded-lg"
-                placeholder="Ej: Av. Libertador 123, Providencia"
-              />
-            </div>
-          </>
-        )}
+              <div className="md:col-span-2">
+                <label className="block text-sm font-medium mb-2">Dirección</label>
+                <input
+                  type="text"
+                  value={formData.vet_clinic_address}
+                  onChange={(e) =>
+                    setFormData({
+                      ...formData,
+                      vet_clinic_address: e.target.value,
+                    })
+                  }
+                  className="w-full px-3 py-2 border rounded-lg"
+                  placeholder="Ej: Av. Libertador 123, Providencia"
+                />
+              </div>
+            </>
+          )}
 
         {typeId === "vaccine_administered" && (
           <>
