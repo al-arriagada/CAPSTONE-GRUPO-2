@@ -12,11 +12,12 @@ import UpdatePassword from "./components/UpdatePassword.jsx";
 import RedirectIfAuth from "./components/RedirectIfAuth.jsx";
 import PetForm from "./components/PetForm.jsx";
 import OwnerProfile from "./components/OwnerProfile.jsx";
-import PetDetail from "./components/PetDetail.jsx";      // ⬅️ NUEVO
+import PetDetail from "./components/PetDetail.jsx";
 import EventoLog from "./components/EventLog.jsx";
 import RedirectAuthHome from "./components/RedirectAuthHome.jsx";
 import ProtectedRouteByRole from "./components/ProtectedRouteByRole.jsx";
 import VetDashboard from "./components/vet/VetDashboard.jsx";
+import PetHealthReport from "./components/PetHealthReport.jsx";
 
 const router = createBrowserRouter([
   // Rutas públicas
@@ -40,6 +41,9 @@ const router = createBrowserRouter([
         <Signup />
       </RedirectAuthHome>
     ),
+  },
+  {
+    path:"/report/:id", element:(<PetHealthReport />)
   },
 
   // Rutas privadas (/app)

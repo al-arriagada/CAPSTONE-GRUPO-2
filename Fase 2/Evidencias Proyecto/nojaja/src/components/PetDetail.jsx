@@ -699,6 +699,12 @@ export default function PetDetail() {
 
             {canEdit && !isEditing && (
               <div className="flex gap-2">
+                <Link
+                  to={`/report/${pet.pet_id}`}
+                  className="px-4 py-2 border rounded-lg text-sm hover:bg-gray-50"
+                >
+                  Reporte
+                </Link>
                 <button
                   onClick={() => setIsEditing(true)}
                   className="px-4 py-2 bg-black text-white rounded-lg text-sm hover:bg-gray-800"
