@@ -577,9 +577,9 @@ export default function PetDetail() {
     ? member.permissions.includes("write")
     : false;
 
-  const canEditCore = isOwner;                   // editar/eliminar ficha solo dueño
+  const canEditCore = isOwner; // editar/eliminar ficha solo dueño
   const canAddClinical = isOwner || memberCanWrite; // eventos/documentos
-  const canEdit = canEditCore;                   // mantener alias que ya usabas
+  const canEdit = canEditCore; // mantener alias que ya usabas
 
   const age = calculateAge(pet.birth_date);
 
