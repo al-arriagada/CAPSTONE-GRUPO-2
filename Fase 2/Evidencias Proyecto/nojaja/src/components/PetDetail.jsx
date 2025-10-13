@@ -3,7 +3,7 @@ import React, { useEffect, useState, useCallback } from "react";
 import { useParams, useNavigate, Link } from "react-router-dom";
 import { supabase } from "../supabaseClient";
 import { useAuth } from "../context/AuthContext.jsx";
-import QRCode from 'qrcode.react'; 
+
 
 export default function PetDetail() {
   const { id } = useParams();
