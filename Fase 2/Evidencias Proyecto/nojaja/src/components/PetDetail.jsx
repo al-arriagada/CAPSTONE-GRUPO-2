@@ -75,29 +75,7 @@ export default function PetDetail() {
     return (data && data[0]) || null;
   }
 
-  async function fetchOwnerContact(userId) {
-    const { data: base, error: e1 } = await supabase
-      .schema("petcare")
-      .from("app_user")
-      .select("user_id, email, full_name")
-      .eq("user_id", userId)
-      .maybeSingle();
-    if (e1) throw e1;
 
-    const { data: pii, error: e2 } = await supabase
-      .schema("petcare")
-      .from("user_pii")
-      .select("phone, address_line")
-      .eq("user_id", userId)
-      .maybeSingle();
-    if (e2) throw e2;
-
-    return {
-      ...base,
-      phone: pii?.phone ?? null,
-      address_line: pii?.address_line ?? null,
-    };
-  }
 
   const validateWeight = (value) => {
     if (!value || value.trim() === "") {
