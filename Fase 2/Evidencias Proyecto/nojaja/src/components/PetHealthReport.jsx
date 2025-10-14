@@ -2,12 +2,12 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { Link, useParams, useNavigate } from "react-router-dom";
 import { supabase } from "../supabaseClient";
-import { useAuth } from "../context/AuthContext";
+
 
 export default function PetHealthReport() {
   const { id } = useParams();           // pet_id
   const navigate = useNavigate();
-  const { user } = useAuth();
+
 
   const [loading, setLoading] = useState(true);
   const [pet, setPet] = useState(null);
@@ -88,7 +88,7 @@ export default function PetHealthReport() {
 
   // ==== helpers ====
   const speciesName = (sid) => speciesCache[sid] || "—";
-  const sexName = (sid) => sexCache[sid] || "—";
+
 
   // Si quieres mapear ids -> nombre sin otro fetch, puedes mantener un diccionario manual:
   const speciesCache = useMemo(
@@ -98,12 +98,7 @@ export default function PetHealthReport() {
     }),
     []
   );
-  const sexCache = useMemo(
-    () => ({
-      // 1: "Macho", 2: "Hembra", ...
-    }),
-    []
-  );
+
 
   const calcAge = (birth) => {
     if (!birth) return "";
