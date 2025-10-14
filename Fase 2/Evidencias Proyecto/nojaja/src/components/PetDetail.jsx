@@ -1389,7 +1389,7 @@ export default function PetDetail() {
         onClose={() => setShowEventModal(false)}
         petId={pet.pet_id}
         eventTypes={eventTypes}
-        canAdd={canAddClinical}  // 👈 permisos: dueño o miembro con "write"
+        canAdd={canAddClinical} // 👈 permisos: dueño o miembro con "write"
         onEventAdded={async () => {
           const refreshed = await loadEventsByDate(pet.pet_id, selectedDate);
           setDayEvents(refreshed);
