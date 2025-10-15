@@ -1,9 +1,9 @@
 // src/components/PetDetail.jsx
-import React, { useEffect, useState, useCallback } from "react";
+import React, { useEffect, useState, useCallback, useRef } from "react";
 import { useParams, useNavigate, Link } from "react-router-dom";
+import QRCode from "react-qr-code";
 import { supabase } from "../supabaseClient";
 import { useAuth } from "../context/AuthContext.jsx";
-import dayjs from "dayjs";
 
 
 export default function PetDetail() {
@@ -27,6 +27,7 @@ export default function PetDetail() {
   const [sexes, setSexes] = useState([]);
   const [origins, setOrigins] = useState([]);
   const [statuses, setStatuses] = useState([]);
+  const [routines, setRoutines] = useState([]);
   const [events, setEvents] = useState([]);
   const [selectedDate, setSelectedDate] = useState(null);
   const [dayEvents, setDayEvents] = useState([]);
@@ -50,6 +51,11 @@ export default function PetDetail() {
   const [uploadingFile, setUploadingFile] = useState(false);
   const [newDocumentTypeId, setNewDocumentTypeId] = useState("");
   const [docTypes, setDocTypes] = useState([]);
+
+  // === Lógica del QR: Nuevos estados y referencia ===
+  const [qrType, setQrType] = useState("url"); // 'url' o 'vcard'
+  const qrCodeRef = useRef(null); // Referencia al contenedor del QR para descargarlo
+
 
   const [formData, setFormData] = useState({
     name: "",
@@ -96,11 +102,8 @@ export default function PetDetail() {
     return true;
   };
 
-
-  /**
-   * Loads all documents associated with the pet from the 'document' table.
-   * CORREGIDO: Uso de .is() para NULL
-   */
+  const getSpeciesName = (id) => species.find((sp) => sp.species_id === id)?.display_name || "—";
+  
   const loadDocuments = useCallback(async (petId) => {
     if (!petId) return;
     try {
@@ -109,11 +112,11 @@ export default function PetDetail() {
         .from("document")
         .select("doc_id, doc_category_id, title, storage_path, created_at, owner_pet_id, owner_user_id")
         .eq("owner_pet_id", petId)
-        .is("deleted_at", null) // ✅ CORRECCIÓN CLAVE: Resuelve error 400
+        .is("deleted_at", null)
         .order("created_at", { ascending: false });
 
       if (error) throw error;
-
+      
       const enrichedDocuments = (data || []).map(doc => {
         const { data: { publicUrl } } = supabase.storage
           .from("pet-documents")
@@ -129,87 +132,19 @@ export default function PetDetail() {
     } catch (e) {
       console.error("Error cargando documentos:", e);
     }
-  }, [setDocuments]);
+  }, []);
 
 
-const loadEvents = async (petId) => {
-  const { data, error } = await supabase
-    .schema("petcare")
-    .from("event")
-    .select(`
-      *,
-      event_type_catalog(display_name),
-      vaccine_event(next_due_date, applied_at, vet_name)
-    `)
-    .eq("pet_id", petId)
-    .order("ts", { ascending: true });
+  const loadRoutinesAndEvents = async (petId) => {
+    const [r, e] = await Promise.all([
+      supabase.schema("petcare").from("routine").select("*").eq("pet_id", petId),
+      supabase.schema("petcare").from("event").select("*").eq("pet_id", petId),
+    ]);
 
-  if (error) {
-    console.error("Error cargando eventos:", error);
-    return;
-  }
-  setEvents(data || []);
-};
-
-
-  async function generateVaccineEvents(pet) {
-    if (!pet?.birth_date || !pet?.species_id) return;
-
-    const plan = {
-      perro: [
-        { name: "Óctuple - 1ª dosis", offsetDays: 45 },
-        { name: "Óctuple - Refuerzo", offsetDays: 75 },
-        { name: "Antirrábica", offsetDays: 90 },
-      ],
-      gato: [
-        { name: "Triple felina - 1ª dosis", offsetDays: 60 },
-        { name: "Triple felina - Refuerzo", offsetDays: 90 },
-        { name: "Antirrábica", offsetDays: 120 },
-      ],
-    };
-
-    const speciesName =
-      species.find((s) => s.species_id === pet.species_id)?.display_name?.toLowerCase();
-
-    if (!["perro", "gato"].includes(speciesName)) return;
-
-    // evitar duplicados
-    const { data: existing } = await supabase
-      .schema("petcare")
-      .from("event")
-      .select("event_id")
-      .eq("pet_id", pet.pet_id)
-      .eq("e_type_id", "vaccine");
-
-    if (existing?.length > 0) return;
-
-    const today = dayjs();
-    const ageInDays = today.diff(dayjs(pet.birth_date), "day");
-
-    // genera las vacunas según ventana temporal
-    for (const v of plan[speciesName]) {
-      if (ageInDays > v.offsetDays - 7 && ageInDays < v.offsetDays + 30) {
-        const eventDate = dayjs(pet.birth_date).add(v.offsetDays, "day").toISOString();
-
-        const { data: ev } = await supabase
-          .schema("petcare")
-          .from("event")
-          .insert([{ pet_id: pet.pet_id, e_type_id: "vaccine", ts: eventDate, details: v.name }])
-          .select("event_id")
-          .maybeSingle();
-
-        if (ev)
-          await supabase
-            .schema("petcare")
-            .from("vaccine_event")
-            .insert([{ event_id: ev.event_id, next_due_date: eventDate }]);
-      }
-    }
-  }
-
-  /**
-   * Loads the pet profile.
-   */
+    if (r.data) setRoutines(r.data);
+    if (e.data) setEvents(e.data);
+  };
+  
   const loadPet = useCallback(async () => {
     setLoading(true);
     setError("");
@@ -230,9 +165,6 @@ const loadEvents = async (petId) => {
 
     if (data) {
       setPet(data);
-
-      await generateVaccineEvents(data);
-
       setFormData({
         name: data.name || "",
         species_id: data.species_id || "",
@@ -251,14 +183,14 @@ const loadEvents = async (petId) => {
       try {
         const oc = await fetchOwnerContactByPet(data.pet_id);
         setOwner(oc);
-        await loadEvents(data.pet_id);
+        await loadRoutinesAndEvents(data.pet_id);
         loadDocuments(data.pet_id);
       } catch (e) {
         console.warn("No fue posible cargar owner/PII:", e?.message);
       }
     }
     setLoading(false);
-  }, [id, loadDocuments]); // loadDocuments es dependencia
+  }, [id, loadDocuments]);
 
 
   useEffect(() => {
@@ -281,7 +213,7 @@ const loadEvents = async (petId) => {
     if (st.data) setStatuses(st.data);
   };
 
-
+  
   const loadDocTypes = async () => {
     const { data, error } = await supabase
       .schema("petcare")
@@ -313,13 +245,11 @@ const loadEvents = async (petId) => {
     }
   };
 
-  // useEffect PRINCIPAL: usa la función estable loadPet
   useEffect(() => {
     loadPet();
   }, [loadPet]);
 
 
-  // Carga membresía del usuario sobre esta mascota
   useEffect(() => {
     const loadMembership = async () => {
       if (!user || !id) return;
@@ -455,7 +385,6 @@ const loadEvents = async (petId) => {
   };
 
   const handleArchive = async () => {
-    // Solo dueño puede archivar
     if (!canEditCore) {
       setError("No tienes permiso para archivar esta mascota.");
       return;
@@ -478,16 +407,10 @@ const loadEvents = async (petId) => {
     navigate("/app");
   };
 
-  const getSpeciesName = (id) =>
-    species.find((sp) => sp.species_id === id)?.display_name || "—";
-  const getSexName = (id) =>
-    sexes.find((sx) => sx.sex_id === id)?.display_name || "—";
-  const getOriginName = (id) =>
-    origins.find((or) => or.origin_id === id)?.display_name || "—";
-  const getStatusName = (id) =>
-    statuses.find((st) => st.status_id === id)?.display_name || "—";
+  const getSexName = (id) => sexes.find((sx) => sx.sex_id === id)?.display_name || "—";
+  const getOriginName = (id) => origins.find((or) => or.origin_id === id)?.display_name || "—";
+  const getStatusName = (id) => statuses.find((st) => st.status_id === id)?.display_name || "—";
 
-  // ========= COLABORADORES: funciones (lista/invitar) =========
   const loadMembers = async () => {
     setMembersLoading(true);
     setMemberErr("");
@@ -593,44 +516,7 @@ const loadEvents = async (petId) => {
     if (activeTab === "colaboradores") loadMembers();
   }, [activeTab, id]);
 
-  if (loading) {
-    return (
-      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
-        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-gray-900"></div>
-      </div>
-    );
-  }
 
-  if (!pet) {
-    return (
-      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
-        <div className="text-center">
-          <p className="text-gray-600 mb-4">Mascota no encontrada</p>
-          <Link to="/app" className="text-blue-600 hover:underline">
-            Volver al Dashboard
-          </Link>
-        </div>
-      </div>
-    );
-  }
-
-  // ======= Permisos (dueño vs colaborador con write)
-  const isOwner = !!user && pet?.user_id === user.id;
-  const isMember = !!member;
-  const memberCanWrite = Array.isArray(member?.permissions)
-    ? member.permissions.includes("write")
-    : false;
-
-  const canEditCore = isOwner; // editar/eliminar ficha solo dueño
-  const canAddClinical = isOwner || memberCanWrite; // eventos/documentos
-  const canEdit = canEditCore; // mantener alias que ya usabas
-
-  const age = calculateAge(pet.birth_date);
-
-
-  /**
-   * Handles download using the public_url stored in the 'document' record.
-   */
   const handleDocumentDownload = (doc) => {
     if (!doc.public_url) return;
     const link = document.createElement("a");
@@ -642,11 +528,6 @@ const loadEvents = async (petId) => {
     document.body.removeChild(link);
   };
 
-
-  /**
-   * Uploads file to storage, checks for doc type, and inserts a record into the 'document' table.
-   * CORREGIDO: owner_user_id = null
-   */
   const handlePdfUpload = async (event) => {
     const file = event.target.files[0];
     if (!file || !canAddClinical || !pet || !user) return;
@@ -656,29 +537,21 @@ const loadEvents = async (petId) => {
       return;
     }
 
-    // 🚨 AÑADIR LA VALIDACIÓN DEL TIPO DE ARCHIVO
     if (file.type !== "application/pdf") {
       setError("Error: Solo se permiten archivos PDF.");
       setUploadingFile(false);
       event.target.value = null; // Limpiar input
       return;
     }
-
-    if (!newDocumentTypeId) {
-      setError("Por favor, selecciona un tipo de documento antes de subir el archivo.");
-      return;
-    }
-
-
+    
     setUploadingFile(true);
     setError("");
     setSuccess("");
-
-    // 1. Upload file to Supabase Storage 
+    
     const folderPath = `pet_files/${pet.pet_id}`;
     const fileName = `${new Date().getTime()}_${file.name}`;
     const filePath = `${folderPath}/${fileName}`;
-
+    
     const { error: uploadError } = await supabase
       .storage
       .from("pet-documents")
@@ -693,14 +566,13 @@ const loadEvents = async (petId) => {
       return;
     }
 
-    // 2. Insert record into the 'document' table
     try {
       const { error: insertError } = await supabase
         .schema("petcare")
         .from("document")
         .insert({
           owner_kind: 'pet',
-          owner_user_id: null, // <<-- ¡CORRECCIÓN! Para pasar el CHECK constraint
+          owner_user_id: null,
           owner_pet_id: pet.pet_id,
           title: file.name,
           storage_path: filePath,
@@ -725,7 +597,56 @@ const loadEvents = async (petId) => {
     setUploadingFile(false);
     event.target.value = null;
   };
+  
+ 
+  // === Lógica del QR: Generación de contenido ===
+  const qrUrlValue = pet ? `${window.location.origin}/public-pet/${pet.pet_id}` : "";
 
+  const generateVCardString = () => {
+    if (!owner || !pet) return "";
+    return `BEGIN:VCARD
+VERSION:3.0
+FN:${owner.full_name || ''}
+TEL;TYPE=CELL:${owner.phone || ''}
+EMAIL:${owner.email || ''}
+NOTE:Contacto de emergencia para ${pet.name}. Especie: ${getSpeciesName(pet.species_id)}.
+URL:${qrUrlValue}
+END:VCARD`;
+  };
+  
+  const vCardValue = generateVCardString();
+  const qrValue = qrType === 'url' ? qrUrlValue : vCardValue;
+
+
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-gray-900"></div>
+      </div>
+    );
+  }
+
+  if (!pet) {
+    return (
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+        <div className="text-center">
+          <p className="text-gray-600 mb-4">Mascota no encontrada</p>
+          <Link to="/app" className="text-blue-600 hover:underline">
+            Volver al Dashboard
+          </Link>
+        </div>
+      </div>
+    );
+  }
+
+  const isOwner = !!user && pet?.user_id === user.id;
+  const isMember = !!member;
+  const memberCanWrite = Array.isArray(member?.permissions) ? member.permissions.includes("write") : false;
+  const canEditCore = isOwner;
+  const canAddClinical = isOwner || memberCanWrite;
+  const canEdit = canEditCore;
+  const age = calculateAge(pet.birth_date);
+  
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -786,7 +707,6 @@ const loadEvents = async (petId) => {
             <h1 className="text-3xl font-bold">{pet.name}</h1>
             <p className="text-gray-500 text-sm mt-1">Perfil de mascota</p>
 
-            {/* Badge de colaborador */}
             {isMember && !isOwner && (
               <div className="mt-2 inline-flex items-center gap-2 rounded-full border px-3 py-1 text-xs text-gray-600">
                 Acceso como colaborador ({member?.member_role_id}) — {memberCanWrite ? "write" : "read"}
@@ -863,8 +783,8 @@ const loadEvents = async (petId) => {
                 <button
                   onClick={() => setActiveTab("id")}
                   className={`flex-1 px-6 py-4 text-sm font-medium transition-colors ${activeTab === "id"
-                    ? "border-b-2 border-black text-black"
-                    : "text-gray-500 hover:text-gray-700"
+                      ? "border-b-2 border-black text-black"
+                      : "text-gray-500 hover:text-gray-700"
                     }`}
                 >
                   ID
@@ -872,8 +792,8 @@ const loadEvents = async (petId) => {
                 <button
                   onClick={() => setActiveTab("perfil")}
                   className={`flex-1 px-6 py-4 text-sm font-medium transition-colors ${activeTab === "perfil"
-                    ? "border-b-2 border-black text-black"
-                    : "text-gray-500 hover:text-gray-700"
+                      ? "border-b-2 border-black text-black"
+                      : "text-gray-500 hover:text-gray-700"
                     }`}
                 >
                   Perfil
@@ -881,8 +801,8 @@ const loadEvents = async (petId) => {
                 <button
                   onClick={() => setActiveTab("historial")}
                   className={`flex-1 px-6 py-4 text-sm font-medium transition-colors ${activeTab === "historial"
-                    ? "border-b-2 border-black text-black"
-                    : "text-gray-500 hover:text-gray-700"
+                      ? "border-b-2 border-black text-black"
+                      : "text-gray-500 hover:text-gray-700"
                     }`}
                 >
                   Historial médico
@@ -890,8 +810,8 @@ const loadEvents = async (petId) => {
                 {canEdit && (<button
                   onClick={() => setActiveTab("rutinas")}
                   className={`flex-1 px-6 py-4 text-sm font-medium transition-colors ${activeTab === "rutinas"
-                    ? "border-b-2 border-black text-black"
-                    : "text-gray-500 hover:text-gray-700"
+                      ? "border-b-2 border-black text-black"
+                      : "text-gray-500 hover:text-gray-700"
                     }`}
                 >
                   Rutinas y eventos
@@ -899,8 +819,8 @@ const loadEvents = async (petId) => {
                 {canEdit && (<button
                   onClick={() => setActiveTab("colaboradores")}
                   className={`flex-1 px-6 py-4 text-sm font-medium transition-colors ${activeTab === "colaboradores"
-                    ? "border-b-2 border-black text-black"
-                    : "text-gray-500 hover:text-gray-700"
+                      ? "border-b-2 border-black text-black"
+                      : "text-gray-500 hover:text-gray-700"
                     }`}
                 >
                   Colaboradores
@@ -919,86 +839,72 @@ const loadEvents = async (petId) => {
                   </div>
 
                   <p className="text-gray-600 mb-6">
-                    Genera un código QR único para tu mascota. Al escanearlo,
-                    mostrará información de contacto del dueño y datos básicos
-                    de la mascota.
+                    Usa estos códigos QR para identificar a tu mascota. El QR de perfil lleva a una página pública, mientras que el QR de contacto (VCard) permite agregar tus datos al teléfono de quien lo escanee.
                   </p>
+                  
+                  <div className="w-fit mx-auto my-6" ref={qrCodeRef}>
+                    <div className="border border-gray-200 p-3 rounded-2xl bg-white shadow-md">
+                      {qrValue ? (
+                        <QRCode 
+                          value={qrValue} 
+                          size={256} 
+                          viewBox={`0 0 256 256`}
+                        />
+                      ) : (
+                        <div className="w-64 h-64 bg-gray-100 flex items-center justify-center text-sm text-gray-500">
+                          Generando QR...
+                        </div>
+                      )}
+                    </div>
+                  </div>
 
-                  <button className="px-6 py-3 bg-black text-white rounded-xl hover:bg-gray-800">
-                    🔲 Generar Código QR
-                  </button>
-
+                  <div className="flex flex-col sm:flex-row justify-center items-center gap-4 mb-8">
+                    <div className="flex border rounded-xl p-1 bg-gray-100">
+                        <button 
+                            onClick={() => setQrType('url')}
+                            className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${qrType === 'url' ? 'bg-white shadow-sm' : 'hover:bg-gray-200 text-gray-600'}`}
+                        >
+                            🔗 Perfil Público
+                        </button>
+                        <button 
+                            onClick={() => setQrType('vcard')}
+                            className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${qrType === 'vcard' ? 'bg-white shadow-sm' : 'hover:bg-gray-200 text-gray-600'}`}
+                        >
+                            👤 Contacto (VCard)
+                        </button>
+                    </div>
+                  </div>
+                  
                   {owner && (
                     <div className="mt-8 p-6 border rounded-2xl bg-gray-50">
                       <h4 className="font-semibold mb-4">
                         Información Visible al Escanear
                       </h4>
                       <p className="text-sm text-gray-600 mb-4">
-                        Al escanear el código QR, se mostrará la siguiente
-                        información:
+                        Al escanear el código QR, se mostrará la siguiente información:
                       </p>
-
                       <div className="space-y-6">
                         <div>
-                          <h5 className="font-medium mb-3">
-                            Información del Dueño:
-                          </h5>
+                          <h5 className="font-medium mb-3">Información del Dueño:</h5>
                           <div className="ml-6 space-y-2 text-sm">
                             <p>{owner.full_name || "Sin nombre"}</p>
-                            {owner.phone && (
-                              <p>
-                                <span className="font-medium">Teléfono:</span>{" "}
-                                {owner.phone}
-                              </p>
-                            )}
-                            {owner.email && (
-                              <p>
-                                <span className="font-medium">Email:</span>{" "}
-                                {owner.email}
-                              </p>
-                            )}
-                            {owner.address_line && (
-                              <p>
-                                <span className="font-medium">Dirección:</span>{" "}
-                                {owner.address_line}
-                              </p>
-                            )}
+                            {owner.phone && <p><span className="font-medium">Teléfono:</span> {owner.phone}</p>}
+                            {owner.email && <p><span className="font-medium">Email:</span> {owner.email}</p>}
+                            {owner.address_line && <p><span className="font-medium">Dirección:</span> {owner.address_line}</p>}
                           </div>
                         </div>
-
                         <div>
-                          <h5 className="font-medium mb-3">
-                            Información de la Mascota:
-                          </h5>
+                          <h5 className="font-medium mb-3">Información de la Mascota:</h5>
                           <div className="ml-6 space-y-2 text-sm">
                             <div className="flex items-center gap-2">
                               <div className="w-8 h-8 rounded-full overflow-hidden bg-gray-200">
-                                <img
-                                  src={pet.image_url || "/placeholder-pet.jpg"}
-                                  alt={pet.name}
-                                  className="w-full h-full object-cover"
-                                />
+                                <img src={pet.image_url || "/placeholder-pet.jpg"} alt={pet.name} className="w-full h-full object-cover"/>
                               </div>
                               <span>{pet.name}</span>
                             </div>
-                            {getSpeciesName(pet.species_id) !== "—" && (
-                              <p>
-                                <span className="font-medium">Especie:</span>{" "}
-                                {getSpeciesName(pet.species_id)}
-                              </p>
-                            )}
-                            {pet.breed && (
-                              <p>
-                                <span className="font-medium">Raza:</span>{" "}
-                                {pet.breed}
-                              </p>
-                            )}
-                            {pet.microchip && (
-                              <p>
-                                <span className="font-medium">Microchip:</span>{" "}
-                                {pet.microchip}
-                              </p>
-                            )}
+                            {getSpeciesName(pet.species_id) !== "—" && <p><span className="font-medium">Especie:</span> {getSpeciesName(pet.species_id)}</p>}
+                            {pet.breed && <p><span className="font-medium">Raza:</span> {pet.breed}</p>}
+                            {pet.microchip && <p><span className="font-medium">Microchip:</span> {pet.microchip}</p>}
                           </div>
                         </div>
                       </div>
@@ -1045,19 +951,14 @@ const loadEvents = async (petId) => {
               {activeTab === "historial" && (
                 <div className="space-y-6">
                   <h3 className="text-xl font-semibold mb-6">Historial Médico</h3>
-
-                  {/* Subir Documento */}
                   <div className="border p-4 rounded-xl bg-gray-50">
                     <label className="block mb-2 text-gray-700 font-medium">Subir Documento Médico (PDF/Imagen)</label>
-
                     {!canAddClinical && (
-                      <p className="text-sm text-red-500 mb-3">
-                        No tienes permisos para subir documentos.
-                      </p>
+                        <p className="text-sm text-red-500 mb-3">
+                          No tienes permisos para subir documentos.
+                        </p>
                     )}
-
                     <fieldset disabled={!canAddClinical || uploadingFile}>
-                      {/* Selector de Tipo de Documento */}
                       <select
                         value={newDocumentTypeId}
                         onChange={(e) => {
@@ -1074,8 +975,6 @@ const loadEvents = async (petId) => {
                           </option>
                         ))}
                       </select>
-
-                      {/* Input de Archivo */}
                       <input
                         type="file"
                         accept="application/pdf,image/*"
@@ -1084,13 +983,10 @@ const loadEvents = async (petId) => {
                         disabled={!newDocumentTypeId}
                       />
                     </fieldset>
-
                     {uploadingFile && (
                       <p className="text-sm text-blue-600 mt-2">Subiendo archivo, por favor espera...</p>
                     )}
                   </div>
-
-                  {/* Lista de Documentos */}
                   <div className="mt-6">
                     <h4 className="font-semibold mb-3 border-b pb-2">Documentos Registrados</h4>
                     {documents.length > 0 ? (
@@ -1129,6 +1025,7 @@ const loadEvents = async (petId) => {
                   <div className="bg-gray-50 p-6 rounded-2xl border shadow-sm">
                     <h4 className="text-lg font-medium mb-4">Calendario</h4>
                     <Calendar
+                      routines={routines}
                       events={events}
                       onDayClick={async (dayDate) => {
                         const data = await loadEventsByDate(pet.pet_id, dayDate);
@@ -1150,13 +1047,11 @@ const loadEvents = async (petId) => {
                   <p className="text-gray-600">
                     Invita a profesionales por correo. Los veterinarios podrán agregar documentos y eventos si la política lo permite.
                   </p>
-
                   {(memberErr || memberMsg) && (
                     <div className={`p-3 rounded-xl border ${memberErr ? 'bg-red-50 border-red-200 text-red-700' : 'bg-green-50 border-green-200 text-green-700'}`}>
                       {memberErr || memberMsg}
                     </div>
                   )}
-
                   <form onSubmit={handleInvite} className="flex flex-col sm:flex-row gap-3 items-stretch sm:items-end">
                     <div className="flex-1">
                       <label className="block text-sm font-medium text-gray-700 mb-1">Correo del colaborador</label>
@@ -1189,7 +1084,6 @@ const loadEvents = async (petId) => {
                       {inviteBusy ? "Invitando..." : "Invitar"}
                     </button>
                   </form>
-
                   <div className="mt-4">
                     <h4 className="font-semibold mb-3">Accesos actuales</h4>
                     {membersLoading ? (
@@ -1236,7 +1130,6 @@ const loadEvents = async (petId) => {
         {isEditing && (
           <div className="bg-white rounded-2xl border shadow-sm p-8">
             <h3 className="text-xl font-semibold mb-6">Editar Información</h3>
-
             <div className="space-y-6">
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
                 <EditField label="Nombre *">
@@ -1400,25 +1293,20 @@ const loadEvents = async (petId) => {
                       onChange={async (e) => {
                         const file = e.target.files[0];
                         if (!file) return;
-
                         const fileName = `${user.id}/${file.name}`;
-
                         const { error: uploadError } = await supabase.storage
                           .from("pets")
                           .upload(fileName, file, {
                             cacheControl: "3600",
                             upsert: true,
                           });
-
                         if (uploadError) {
                           console.error("Error subiendo imagen:", uploadError.message);
                           return;
                         }
-
                         const { data: publicData } = supabase.storage
                           .from("pets")
                           .getPublicUrl(fileName);
-
                         setFormData({
                           ...formData,
                           image_url: publicData.publicUrl,
@@ -1453,7 +1341,7 @@ const loadEvents = async (petId) => {
         onClose={() => setShowEventModal(false)}
         petId={pet.pet_id}
         eventTypes={eventTypes}
-        canAdd={canAddClinical} // 👈 permisos: dueño o miembro con "write"
+        canAdd={canAddClinical}
         onEventAdded={async () => {
           const refreshed = await loadEventsByDate(pet.pet_id, selectedDate);
           setDayEvents(refreshed);
@@ -1570,7 +1458,7 @@ function ConfirmDialog({
   );
 }
 
-function Calendar({ events = [], onDayClick }) {
+function Calendar({ routines = [], events = [], onDayClick }) {
   const [today, setToday] = React.useState(new Date());
   const [currentMonth, setCurrentMonth] = React.useState(today.getMonth());
   const [currentYear, setCurrentYear] = React.useState(today.getFullYear());
@@ -1593,14 +1481,18 @@ function Calendar({ events = [], onDayClick }) {
     if (currentMonth === 0) {
       setCurrentMonth(11);
       setCurrentYear((y) => y - 1);
-    } else setCurrentMonth((m) => m - 1);
+    } else {
+      setCurrentMonth((m) => m - 1);
+    }
   };
 
   const nextMonth = () => {
     if (currentMonth === 11) {
       setCurrentMonth(0);
       setCurrentYear((y) => y + 1);
-    } else setCurrentMonth((m) => m + 1);
+    } else {
+      setCurrentMonth((m) => m + 1);
+    }
   };
 
   const handleMonthChange = (e) => setCurrentMonth(parseInt(e.target.value));
@@ -1610,71 +1502,107 @@ function Calendar({ events = [], onDayClick }) {
   for (let i = 0; i < firstDay; i++) calendarDays.push(null);
   for (let d = 1; d <= daysInMonth; d++) calendarDays.push(d);
 
-  // === 💉 Detecta estado de vacunas para colorear días ===
-  const getVaccineStatus = (day) => {
-    const vaccines = events.filter((e) => {
-      const date = new Date(e.ts);
+  const hasRoutine = (day) =>
+    routines.some((r) => {
+      const date = new Date(r.created_at);
       return (
-        e.event_type_catalog?.display_name?.toLowerCase().includes("vacuna") &&
         date.getDate() === day &&
         date.getMonth() === currentMonth &&
         date.getFullYear() === currentYear
       );
     });
-    if (vaccines.length === 0) return null;
-    const allApplied = vaccines.every((v) => v.vaccine_event?.applied_at);
-    return allApplied ? "applied" : "pending";
-  };
+
+  const hasEvent = (day) =>
+    events.some((e) => {
+      const date = new Date(e.ts || e.created_at);
+      return (
+        date.getDate() === day &&
+        date.getMonth() === currentMonth &&
+        date.getFullYear() === currentYear
+      );
+    });
 
   const years = Array.from({ length: 11 }, (_, i) => today.getFullYear() - 5 + i);
 
   return (
     <div className="text-center">
-      {/* === Encabezado del calendario === */}
       <div className="flex flex-wrap justify-between items-center mb-4 gap-3">
         <div className="flex items-center gap-2">
-          <button onClick={prevMonth} className="px-3 py-1 border rounded-lg hover:bg-gray-100">←</button>
-          <select value={currentMonth} onChange={handleMonthChange} className="border rounded-lg px-2 py-1 text-sm">
-            {months.map((m, i) => (<option key={m} value={i}>{m}</option>))}
+          <button onClick={prevMonth} className="px-3 py-1 border rounded-lg hover:bg-gray-100">
+            ←
+          </button>
+          <select
+            value={currentMonth}
+            onChange={handleMonthChange}
+            className="border rounded-lg px-2 py-1 text-sm"
+          >
+            {months.map((m, i) => (
+              <option key={m} value={i}>
+                {m}
+              </option>
+            ))}
           </select>
-          <select value={currentYear} onChange={handleYearChange} className="border rounded-lg px-2 py-1 text-sm">
-            {years.map((y) => (<option key={y} value={y}>{y}</option>))}
+          <select
+            value={currentYear}
+            onChange={handleYearChange}
+            className="border rounded-lg px-2 py-1 text-sm"
+          >
+            {years.map((y) => (
+              <option key={y} value={y}>
+                {y}
+              </option>
+            ))}
           </select>
-          <button onClick={nextMonth} className="px-3 py-1 border rounded-lg hover:bg-gray-100">→</button>
+          <button onClick={nextMonth} className="px-3 py-1 border rounded-lg hover:bg-gray-100">
+            →
+          </button>
         </div>
 
         <span className="text-sm text-gray-500">
           Hoy es{" "}
           {today.toLocaleDateString("es-CL", {
-            weekday: "long", day: "numeric", month: "long", year: "numeric",
+            weekday: "long",
+            day: "numeric",
+            month: "long",
+            year: "numeric",
           })}
         </span>
       </div>
 
       <div className="grid grid-cols-7 gap-2 text-sm font-medium text-gray-600">
-        {["Lun", "Mar", "Mié", "Jue", "Vie", "Sáb", "Dom"].map((d) => (<div key={d}>{d}</div>))}
+        {["Lun", "Mar", "Mié", "Jue", "Vie", "Sáb", "Dom"].map((d) => (
+          <div key={d}>{d}</div>
+        ))}
       </div>
 
       <div className="grid grid-cols-7 gap-2 text-sm mt-1">
         {calendarDays.map((day, i) => {
           if (!day) return <div key={i} />;
-          const isToday = day === today.getDate() &&
+          const isToday =
+            day === today.getDate() &&
             currentMonth === today.getMonth() &&
             currentYear === today.getFullYear();
+
           const dateObj = new Date(currentYear, currentMonth, day);
-          const vaccineStatus = getVaccineStatus(day);
 
           return (
             <div
               key={i}
               onClick={() => onDayClick?.(dateObj)}
-              className={`cursor-pointer h-14 flex flex-col items-center justify-center rounded-lg border transition 
-                ${isToday ? "bg-pink-500 text-white" :
-                  vaccineStatus === "applied" ? "bg-green-100 text-green-700 border-green-400" :
-                    vaccineStatus === "pending" ? "bg-red-100 text-red-700 border-red-400" :
-                      "bg-white text-gray-700 hover:bg-gray-100"}`}
+              className={`cursor-pointer h-14 flex flex-col items-center justify-center rounded-lg border relative transition ${isToday
+                  ? "bg-pink-500 text-white"
+                  : "bg-white text-gray-700 hover:bg-gray-100"
+                }`}
             >
               <span>{day}</span>
+              <div className="absolute bottom-1 flex gap-1">
+                {hasRoutine(day) && (
+                  <span className="w-2 h-2 bg-blue-500 rounded-full"></span>
+                )}
+                {hasEvent(day) && (
+                  <span className="w-2 h-2 bg-green-500 rounded-full"></span>
+                )}
+              </div>
             </div>
           );
         })}
@@ -1768,27 +1696,6 @@ function EventModal({ open, date, events, onClose, petId, eventTypes, onEventAdd
     setSaving(false);
   };
 
-  const handleMarkAsApplied = async (eventId) => {
-    const applied_at = prompt("Ingrese la fecha de aplicación (YYYY-MM-DD):");
-    const vet_name = prompt("Ingrese el nombre de la veterinaria:");
-
-    if (!applied_at) return alert("Debe ingresar una fecha válida.");
-
-    const { error } = await supabase
-      .schema("petcare")
-      .from("vaccine_event")
-      .update({ applied_at, vet_name })
-      .eq("event_id", eventId);
-
-    if (error) {
-      console.error(error);
-      alert("Error al registrar la aplicación de vacuna.");
-    } else {
-      alert("Vacuna registrada como aplicada.");
-      onEventAdded(); // refresca
-    }
-  };
-
   return (
     <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50">
       <div className="bg-white rounded-2xl shadow-xl w-full max-w-lg p-6 relative">
@@ -1808,10 +1715,7 @@ function EventModal({ open, date, events, onClose, petId, eventTypes, onEventAdd
         ) : (
           <ul className="space-y-4 mt-4 max-h-80 overflow-y-auto pr-2">
             {events.map((ev) => (
-              <li
-                key={ev.event_id}
-                className="border rounded-xl p-4 bg-gray-50 text-left"
-              >
+              <li key={ev.event_id} className="border rounded-xl p-4 bg-gray-50 text-left">
                 <p className="font-medium text-gray-800">
                   {ev.event_type_catalog?.display_name || "Evento sin tipo"}
                 </p>
@@ -1830,22 +1734,11 @@ function EventModal({ open, date, events, onClose, petId, eventTypes, onEventAdd
                   </p>
                 )}
 
-                {/* 💉 Vacunas: mostrar botón o estado */}
-                {ev.event_type_catalog?.display_name?.toLowerCase().includes("vacuna") && (
-                  !ev.vaccine_event?.applied_at ? (
-                    <button
-                      onClick={() => handleMarkAsApplied(ev.event_id)}
-                      className="mt-2 text-xs text-blue-600 hover:underline"
-                    >
-                      Marcar como aplicada
-                    </button>
-                  ) : (
-                    <p className="text-xs text-green-600 mt-2">
-                      Aplicada el{" "}
-                      {new Date(ev.vaccine_event.applied_at).toLocaleDateString("es-CL")}
-                      {ev.vaccine_event.vet_name && ` en ${ev.vaccine_event.vet_name}`}
-                    </p>
-                  )
+                {ev.vaccine_event?.next_due_date && (
+                  <p className="text-xs text-green-600 mt-1">
+                    💉 Próxima dosis:{" "}
+                    {new Date(ev.vaccine_event.next_due_date).toLocaleDateString("es-CL")}
+                  </p>
                 )}
               </li>
             ))}
