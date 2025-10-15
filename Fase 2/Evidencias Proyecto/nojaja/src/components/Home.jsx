@@ -1,24 +1,48 @@
 // src/components/Home.jsx
-import React, { useState } from "react";
+import React, { useState, useMemo } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { useAuth } from "../context/AuthContext.jsx";
-import useMyPets from "../hooks/useMyPets";          // ⬅️ hook que lista mascotas
-import PetCard from "../components/PetCard.jsx";     // ⬅️ tarjeta real
+import useMyPets from "../hooks/useMyPets";
+import useAllMyDocuments from "../hooks/useAllMyDocuments";
+import PetCard from "../components/PetCard.jsx";
 
 export default function Home() {
   const { user } = useAuth();
-  const { pets, loading, refreshing } = useMyPets();
+  const { pets, loading: petsLoading, refreshing } = useMyPets();
+  const { documents, loading: docsLoading } = useAllMyDocuments();
   const [tab, setTab] = useState("mascotas");
+  const [expandedPetId, setExpandedPetId] = useState(null); // Estado para controlar la fila expandida
   const navigate = useNavigate();
 
   const ownerName =
     user?.user_metadata?.name || user?.email?.split("@")[0] || "usuario";
 
-  // Stats básicas (cuando tengas citas/historial reales, reemplázalas)
+  // Agrupa los documentos por mascota
+  const documentsByPet = useMemo(() => {
+    return documents.reduce((acc, doc) => {
+      const petId = doc.owner_pet_id;
+      if (!acc[petId]) {
+        acc[petId] = {
+          petId: petId,
+          petName: doc.pet?.name || 'Mascota Desconocida',
+          docs: [],
+        };
+      }
+      acc[petId].docs.push(doc);
+      return acc;
+    }, {});
+  }, [documents]);
+
+  const groupedDocuments = Object.values(documentsByPet);
+
   const stats = {
     mascotas: pets.length,
     citasSemana: 0,
-    historiales: 0,
+    historiales: documents.length,
+  };
+
+  const handleToggleExpand = (petId) => {
+    setExpandedPetId(currentId => (currentId === petId ? null : petId));
   };
 
   return (
@@ -62,7 +86,7 @@ export default function Home() {
       {/* Content */}
       <div className="mt-4">
         {tab === "mascotas" && (
-          loading ? (
+          petsLoading ? (
             <GridSkeleton />
           ) : pets.length === 0 ? (
             <EmptyState
@@ -72,11 +96,9 @@ export default function Home() {
             />
           ) : (
             <>
-              {/* si quieres, un spinner pequeño arriba a la derecha */}
               {refreshing && (
                 <div className="text-xs text-gray-500 mb-2">Actualizando…</div>
               )}
-
               <div className="grid grid-cols-1 gap-6 md:grid-cols-2 lg:grid-cols-3">
                 {pets.map((p) => (
                   <PetCard key={p.pet_id} pet={p} />
@@ -93,13 +115,39 @@ export default function Home() {
             onAction={() => alert("Agregar Cita")}
           />
         )}
-
+        
+        {/* 👇 SECCIÓN DE HISTORIAL MODIFICADA CON TABLA EXPANDIBLE */}
         {tab === "historial" && (
-          <EmptyState
-            title="Aún no has agregado historial"
-            actionLabel="Añadir Registro"
-            onAction={() => alert("Añadir Registro")}
-          />
+          docsLoading ? (
+            <div className="text-center text-gray-500 py-10">Cargando historial médico...</div>
+          ) : groupedDocuments.length === 0 ? (
+            <EmptyState
+              title="Aún no has agregado ningún historial médico."
+              actionLabel="Ir a Mascotas para añadir"
+              onAction={() => setTab("mascotas")}
+            />
+          ) : (
+            <div className="rounded-2xl border bg-white shadow-sm overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead className="bg-gray-50 text-gray-600">
+                  <tr>
+                    <th scope="col" className="px-6 py-3 text-left font-semibold">Mascota</th>
+                    <th scope="col" className="px-6 py-3 text-left font-semibold">Documentos</th>
+                    <th scope="col" className="relative px-6 py-3"><span className="sr-only">Expandir</span></th>
+                  </tr>
+                </thead>
+                {groupedDocuments.map((group) => (
+                  <PetDocumentGroup
+                    key={group.petId}
+                    petName={group.petName}
+                    docs={group.docs}
+                    isExpanded={expandedPetId === group.petId}
+                    onToggle={() => handleToggleExpand(group.petId)}
+                  />
+                ))}
+              </table>
+            </div>
+          )
         )}
 
         {tab === "analisis" && (
@@ -117,6 +165,74 @@ export default function Home() {
 }
 
 /* ----------------------- UI helpers ----------------------- */
+
+// 👇 COMPONENTE PARA LA FILA DE LA MASCOTA Y SUS DOCUMENTOS EXPANDIBLES
+function PetDocumentGroup({ petName, docs, isExpanded, onToggle }) {
+  return (
+    <tbody className="divide-y divide-gray-200">
+      <tr onClick={onToggle} className="cursor-pointer hover:bg-gray-50">
+        <td className="px-6 py-4 font-medium text-gray-900">{petName}</td>
+        <td className="px-6 py-4 text-gray-500">{docs.length} documento(s)</td>
+        <td className="px-6 py-4">
+          <svg
+            xmlns="http://www.w3.org/2000/svg"
+            className={`h-5 w-5 text-gray-400 transition-transform transform ${isExpanded ? "rotate-180" : ""}`}
+            viewBox="0 0 20 20"
+            fill="currentColor"
+          >
+            <path fillRule="evenodd" d="M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z" clipRule="evenodd" />
+          </svg>
+        </td>
+      </tr>
+      {isExpanded && (
+        <tr>
+          <td colSpan="3" className="p-0">
+            <div className="px-6 py-4 bg-gray-50/50">
+              <ul className="divide-y divide-gray-200">
+                {docs.map(doc => (
+                  <DocumentSubRow key={doc.doc_id} document={doc} />
+                ))}
+              </ul>
+            </div>
+          </td>
+        </tr>
+      )}
+    </tbody>
+  );
+}
+
+// 👇 COMPONENTE PARA LA FILA DE CADA DOCUMENTO INDIVIDUAL
+function DocumentSubRow({ document }) {
+  const handleDownload = () => {
+    if (!document.public_url) return;
+    const link = document.createElement("a");
+    link.href = document.public_url;
+    link.download = document.title;
+    link.target = "_blank";
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
+  
+  return (
+    <li className="flex items-center justify-between py-3">
+      <div>
+        <p className="font-medium text-gray-800">{document.title}</p>
+        <p className="text-xs text-gray-500">
+          Subido: {new Date(document.created_at).toLocaleDateString("es-CL")}
+        </p>
+      </div>
+      <button
+        onClick={handleDownload}
+        disabled={!document.public_url}
+        className="px-3 py-1.5 bg-blue-600 text-white rounded-lg text-xs font-semibold hover:bg-blue-700 disabled:opacity-50"
+      >
+        Descargar
+      </button>
+    </li>
+  );
+}
+
 
 function StatCard({ title, value, helper, icon }) {
   return (
