@@ -27,7 +27,6 @@ export default function PetDetail() {
   const [sexes, setSexes] = useState([]);
   const [origins, setOrigins] = useState([]);
   const [statuses, setStatuses] = useState([]);
-  const [routines, setRoutines] = useState([]);
   const [events, setEvents] = useState([]);
   const [selectedDate, setSelectedDate] = useState(null);
   const [dayEvents, setDayEvents] = useState([]);
@@ -52,7 +51,6 @@ export default function PetDetail() {
   const [newDocumentTypeId, setNewDocumentTypeId] = useState("");
   const [docTypes, setDocTypes] = useState([]);
 
-
   const [formData, setFormData] = useState({
     name: "",
     species_id: "",
@@ -75,8 +73,6 @@ export default function PetDetail() {
     if (error) throw error;
     return (data && data[0]) || null;
   }
-
-
 
   const validateWeight = (value) => {
     if (!value || value.trim() === "") {
@@ -136,15 +132,25 @@ export default function PetDetail() {
   }, [setDocuments]);
 
 
-  const loadRoutinesAndEvents = async (petId) => {
-    const [r, e] = await Promise.all([
-      supabase.schema("petcare").from("routine").select("*").eq("pet_id", petId),
-      supabase.schema("petcare").from("event").select("*").eq("pet_id", petId),
-    ]);
+const loadEvents = async (petId) => {
+  const { data, error } = await supabase
+    .schema("petcare")
+    .from("event")
+    .select(`
+      *,
+      event_type_catalog(display_name),
+      vaccine_event(next_due_date, applied_at, vet_name)
+    `)
+    .eq("pet_id", petId)
+    .order("ts", { ascending: true });
 
-    if (r.data) setRoutines(r.data);
-    if (e.data) setEvents(e.data);
-  };
+  if (error) {
+    console.error("Error cargando eventos:", error);
+    return;
+  }
+  setEvents(data || []);
+};
+
 
   async function generateVaccineEvents(pet) {
     if (!pet?.birth_date || !pet?.species_id) return;
@@ -245,7 +251,7 @@ export default function PetDetail() {
       try {
         const oc = await fetchOwnerContactByPet(data.pet_id);
         setOwner(oc);
-        await loadRoutinesAndEvents(data.pet_id);
+        await loadEvents(data.pet_id);
         loadDocuments(data.pet_id);
       } catch (e) {
         console.warn("No fue posible cargar owner/PII:", e?.message);
@@ -1123,7 +1129,6 @@ export default function PetDetail() {
                   <div className="bg-gray-50 p-6 rounded-2xl border shadow-sm">
                     <h4 className="text-lg font-medium mb-4">Calendario</h4>
                     <Calendar
-                      routines={routines}
                       events={events}
                       onDayClick={async (dayDate) => {
                         const data = await loadEventsByDate(pet.pet_id, dayDate);
@@ -1565,7 +1570,7 @@ function ConfirmDialog({
   );
 }
 
-function Calendar({ routines = [], events = [], onDayClick }) {
+function Calendar({ events = [], onDayClick }) {
   const [today, setToday] = React.useState(new Date());
   const [currentMonth, setCurrentMonth] = React.useState(today.getMonth());
   const [currentYear, setCurrentYear] = React.useState(today.getFullYear());
