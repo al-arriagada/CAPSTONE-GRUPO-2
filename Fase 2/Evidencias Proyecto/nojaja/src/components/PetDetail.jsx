@@ -3,6 +3,7 @@ import React, { useEffect, useState, useCallback } from "react";
 import { useParams, useNavigate, Link } from "react-router-dom";
 import { supabase } from "../supabaseClient";
 import { useAuth } from "../context/AuthContext.jsx";
+import dayjs from "dayjs";
 
 
 export default function PetDetail() {
@@ -46,10 +47,10 @@ export default function PetDetail() {
   const [member, setMember] = useState(null);
 
   // === Archivos PDF y Documentos ===
-  const [documents, setDocuments] = useState([]); 
+  const [documents, setDocuments] = useState([]);
   const [uploadingFile, setUploadingFile] = useState(false);
-  const [newDocumentTypeId, setNewDocumentTypeId] = useState(""); 
-  const [docTypes, setDocTypes] = useState([]); 
+  const [newDocumentTypeId, setNewDocumentTypeId] = useState("");
+  const [docTypes, setDocTypes] = useState([]);
 
 
   const [formData, setFormData] = useState({
@@ -99,7 +100,7 @@ export default function PetDetail() {
     return true;
   };
 
-  
+
   /**
    * Loads all documents associated with the pet from the 'document' table.
    * CORREGIDO: Uso de .is() para NULL
@@ -110,20 +111,20 @@ export default function PetDetail() {
       const { data, error } = await supabase
         .schema("petcare")
         .from("document")
-        .select("doc_id, doc_category_id, title, storage_path, created_at, owner_pet_id, owner_user_id") 
-        .eq("owner_pet_id", petId) 
+        .select("doc_id, doc_category_id, title, storage_path, created_at, owner_pet_id, owner_user_id")
+        .eq("owner_pet_id", petId)
         .is("deleted_at", null) // ✅ CORRECCIÓN CLAVE: Resuelve error 400
         .order("created_at", { ascending: false });
 
       if (error) throw error;
-      
+
       const enrichedDocuments = (data || []).map(doc => {
         const { data: { publicUrl } } = supabase.storage
           .from("pet-documents")
           .getPublicUrl(doc.storage_path);
         return {
           ...doc,
-          public_url: publicUrl 
+          public_url: publicUrl
         };
       });
 
@@ -144,7 +145,62 @@ export default function PetDetail() {
     if (r.data) setRoutines(r.data);
     if (e.data) setEvents(e.data);
   };
-  
+
+  async function generateVaccineEvents(pet) {
+    if (!pet?.birth_date || !pet?.species_id) return;
+
+    const plan = {
+      perro: [
+        { name: "Óctuple - 1ª dosis", offsetDays: 45 },
+        { name: "Óctuple - Refuerzo", offsetDays: 75 },
+        { name: "Antirrábica", offsetDays: 90 },
+      ],
+      gato: [
+        { name: "Triple felina - 1ª dosis", offsetDays: 60 },
+        { name: "Triple felina - Refuerzo", offsetDays: 90 },
+        { name: "Antirrábica", offsetDays: 120 },
+      ],
+    };
+
+    const speciesName =
+      species.find((s) => s.species_id === pet.species_id)?.display_name?.toLowerCase();
+
+    if (!["perro", "gato"].includes(speciesName)) return;
+
+    // evitar duplicados
+    const { data: existing } = await supabase
+      .schema("petcare")
+      .from("event")
+      .select("event_id")
+      .eq("pet_id", pet.pet_id)
+      .eq("e_type_id", "vaccine");
+
+    if (existing?.length > 0) return;
+
+    const today = dayjs();
+    const ageInDays = today.diff(dayjs(pet.birth_date), "day");
+
+    // genera las vacunas según ventana temporal
+    for (const v of plan[speciesName]) {
+      if (ageInDays > v.offsetDays - 7 && ageInDays < v.offsetDays + 30) {
+        const eventDate = dayjs(pet.birth_date).add(v.offsetDays, "day").toISOString();
+
+        const { data: ev } = await supabase
+          .schema("petcare")
+          .from("event")
+          .insert([{ pet_id: pet.pet_id, e_type_id: "vaccine", ts: eventDate, details: v.name }])
+          .select("event_id")
+          .maybeSingle();
+
+        if (ev)
+          await supabase
+            .schema("petcare")
+            .from("vaccine_event")
+            .insert([{ event_id: ev.event_id, next_due_date: eventDate }]);
+      }
+    }
+  }
+
   /**
    * Loads the pet profile.
    */
@@ -168,6 +224,9 @@ export default function PetDetail() {
 
     if (data) {
       setPet(data);
+
+      await generateVaccineEvents(data);
+
       setFormData({
         name: data.name || "",
         species_id: data.species_id || "",
@@ -187,7 +246,7 @@ export default function PetDetail() {
         const oc = await fetchOwnerContactByPet(data.pet_id);
         setOwner(oc);
         await loadRoutinesAndEvents(data.pet_id);
-        loadDocuments(data.pet_id); 
+        loadDocuments(data.pet_id);
       } catch (e) {
         console.warn("No fue posible cargar owner/PII:", e?.message);
       }
@@ -216,7 +275,7 @@ export default function PetDetail() {
     if (st.data) setStatuses(st.data);
   };
 
-  
+
   const loadDocTypes = async () => {
     const { data, error } = await supabase
       .schema("petcare")
@@ -251,7 +310,7 @@ export default function PetDetail() {
   // useEffect PRINCIPAL: usa la función estable loadPet
   useEffect(() => {
     loadPet();
-  }, [loadPet]); 
+  }, [loadPet]);
 
 
   // Carga membresía del usuario sobre esta mascota
@@ -570,8 +629,8 @@ export default function PetDetail() {
     if (!doc.public_url) return;
     const link = document.createElement("a");
     link.href = doc.public_url;
-    link.download = doc.title; 
-    link.target = "_blank"; 
+    link.download = doc.title;
+    link.target = "_blank";
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
@@ -584,40 +643,40 @@ export default function PetDetail() {
    */
   const handlePdfUpload = async (event) => {
     const file = event.target.files[0];
-    if (!file || !canAddClinical || !pet || !user) return; 
+    if (!file || !canAddClinical || !pet || !user) return;
 
     if (!newDocumentTypeId) {
       setError("Por favor, selecciona un tipo de documento antes de subir el archivo.");
       return;
     }
 
-        // 🚨 AÑADIR LA VALIDACIÓN DEL TIPO DE ARCHIVO
+    // 🚨 AÑADIR LA VALIDACIÓN DEL TIPO DE ARCHIVO
     if (file.type !== "application/pdf") {
-        setError("Error: Solo se permiten archivos PDF.");
-        setUploadingFile(false);
-        event.target.value = null; // Limpiar input
-        return;
+      setError("Error: Solo se permiten archivos PDF.");
+      setUploadingFile(false);
+      event.target.value = null; // Limpiar input
+      return;
     }
 
     if (!newDocumentTypeId) {
-        setError("Por favor, selecciona un tipo de documento antes de subir el archivo.");
-        return;
+      setError("Por favor, selecciona un tipo de documento antes de subir el archivo.");
+      return;
     }
-    
+
 
     setUploadingFile(true);
     setError("");
     setSuccess("");
-    
+
     // 1. Upload file to Supabase Storage 
     const folderPath = `pet_files/${pet.pet_id}`;
     const fileName = `${new Date().getTime()}_${file.name}`;
     const filePath = `${folderPath}/${fileName}`;
-    
+
     const { error: uploadError } = await supabase
       .storage
       .from("pet-documents")
-      .upload(filePath, file, { 
+      .upload(filePath, file, {
         upsert: true,
         cacheControl: "3600"
       });
@@ -634,13 +693,13 @@ export default function PetDetail() {
         .schema("petcare")
         .from("document")
         .insert({
-          owner_kind: 'pet', 
+          owner_kind: 'pet',
           owner_user_id: null, // <<-- ¡CORRECCIÓN! Para pasar el CHECK constraint
           owner_pet_id: pet.pet_id,
           title: file.name,
           storage_path: filePath,
-          created_by: user.id, 
-          doc_category_id: newDocumentTypeId, 
+          created_by: user.id,
+          doc_category_id: newDocumentTypeId,
           hash_sha256: null,
         });
 
@@ -651,16 +710,16 @@ export default function PetDetail() {
 
       setSuccess(`Archivo '${file.name}' subido y registrado exitosamente.`);
       await loadDocuments(pet.pet_id);
-      setNewDocumentTypeId(''); 
+      setNewDocumentTypeId('');
 
     } catch (insertError) {
       setError(`Error DB al registrar documento: ${insertError.message || 'Revise la consola del navegador.'}`);
     }
 
     setUploadingFile(false);
-    event.target.value = null; 
+    event.target.value = null;
   };
-  
+
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -984,47 +1043,47 @@ export default function PetDetail() {
                   {/* Subir Documento */}
                   <div className="border p-4 rounded-xl bg-gray-50">
                     <label className="block mb-2 text-gray-700 font-medium">Subir Documento Médico (PDF/Imagen)</label>
-                    
+
                     {!canAddClinical && (
-                        <p className="text-sm text-red-500 mb-3">
-                          No tienes permisos para subir documentos.
-                        </p>
+                      <p className="text-sm text-red-500 mb-3">
+                        No tienes permisos para subir documentos.
+                      </p>
                     )}
 
                     <fieldset disabled={!canAddClinical || uploadingFile}>
-                        {/* Selector de Tipo de Documento */}
-                        <select
-                          value={newDocumentTypeId}
-                          onChange={(e) => {
-                            setNewDocumentTypeId(e.target.value);
-                            setError(""); 
-                          }}
-                          className="w-full border rounded-xl px-3 py-2 text-sm mb-3 bg-white"
-                          required
-                        >
-                          <option value="">Selecciona Tipo de Documento...</option>
-                          {docTypes.map(type => (
-                            <option key={type.doc_type_id} value={type.doc_type_id}>
-                              {type.display_name}
-                            </option>
-                          ))}
-                        </select>
+                      {/* Selector de Tipo de Documento */}
+                      <select
+                        value={newDocumentTypeId}
+                        onChange={(e) => {
+                          setNewDocumentTypeId(e.target.value);
+                          setError("");
+                        }}
+                        className="w-full border rounded-xl px-3 py-2 text-sm mb-3 bg-white"
+                        required
+                      >
+                        <option value="">Selecciona Tipo de Documento...</option>
+                        {docTypes.map(type => (
+                          <option key={type.doc_type_id} value={type.doc_type_id}>
+                            {type.display_name}
+                          </option>
+                        ))}
+                      </select>
 
-                        {/* Input de Archivo */}
-                        <input
-                          type="file"
-                          accept="application/pdf,image/*" 
-                          onChange={handlePdfUpload}
-                          className="border rounded px-3 py-2 text-sm w-full bg-white"
-                          disabled={!newDocumentTypeId}
-                        />
+                      {/* Input de Archivo */}
+                      <input
+                        type="file"
+                        accept="application/pdf,image/*"
+                        onChange={handlePdfUpload}
+                        className="border rounded px-3 py-2 text-sm w-full bg-white"
+                        disabled={!newDocumentTypeId}
+                      />
                     </fieldset>
 
                     {uploadingFile && (
                       <p className="text-sm text-blue-600 mt-2">Subiendo archivo, por favor espera...</p>
                     )}
                   </div>
-                  
+
                   {/* Lista de Documentos */}
                   <div className="mt-6">
                     <h4 className="font-semibold mb-3 border-b pb-2">Documentos Registrados</h4>
@@ -1061,19 +1120,19 @@ export default function PetDetail() {
               {canEdit && activeTab === "rutinas" && (
                 <div>
                   <h3 className="text-xl font-semibold mb-6">Rutinas y Eventos</h3>
-                <div className="bg-gray-50 p-6 rounded-2xl border shadow-sm">
-                  <h4 className="text-lg font-medium mb-4">Calendario</h4>
-                  <Calendar
-                    routines={routines}
-                    events={events}
-                    onDayClick={async (dayDate) => {
-                      const data = await loadEventsByDate(pet.pet_id, dayDate);
-                      setSelectedDate(dayDate);
-                      setDayEvents(data);
-                      setShowEventModal(true);
-                    }}
-                  />
-                </div>
+                  <div className="bg-gray-50 p-6 rounded-2xl border shadow-sm">
+                    <h4 className="text-lg font-medium mb-4">Calendario</h4>
+                    <Calendar
+                      routines={routines}
+                      events={events}
+                      onDayClick={async (dayDate) => {
+                        const data = await loadEventsByDate(pet.pet_id, dayDate);
+                        setSelectedDate(dayDate);
+                        setDayEvents(data);
+                        setShowEventModal(true);
+                      }}
+                    />
+                  </div>
                 </div>
               )}
 
@@ -1529,18 +1588,14 @@ function Calendar({ routines = [], events = [], onDayClick }) {
     if (currentMonth === 0) {
       setCurrentMonth(11);
       setCurrentYear((y) => y - 1);
-    } else {
-      setCurrentMonth((m) => m - 1);
-    }
+    } else setCurrentMonth((m) => m - 1);
   };
 
   const nextMonth = () => {
     if (currentMonth === 11) {
       setCurrentMonth(0);
       setCurrentYear((y) => y + 1);
-    } else {
-      setCurrentMonth((m) => m + 1);
-    }
+    } else setCurrentMonth((m) => m + 1);
   };
 
   const handleMonthChange = (e) => setCurrentMonth(parseInt(e.target.value));
@@ -1550,107 +1605,71 @@ function Calendar({ routines = [], events = [], onDayClick }) {
   for (let i = 0; i < firstDay; i++) calendarDays.push(null);
   for (let d = 1; d <= daysInMonth; d++) calendarDays.push(d);
 
-  const hasRoutine = (day) =>
-    routines.some((r) => {
-      const date = new Date(r.created_at);
+  // === 💉 Detecta estado de vacunas para colorear días ===
+  const getVaccineStatus = (day) => {
+    const vaccines = events.filter((e) => {
+      const date = new Date(e.ts);
       return (
+        e.event_type_catalog?.display_name?.toLowerCase().includes("vacuna") &&
         date.getDate() === day &&
         date.getMonth() === currentMonth &&
         date.getFullYear() === currentYear
       );
     });
-
-  const hasEvent = (day) =>
-    events.some((e) => {
-      const date = new Date(e.ts || e.created_at);
-      return (
-        date.getDate() === day &&
-        date.getMonth() === currentMonth &&
-        date.getFullYear() === currentYear
-      );
-    });
+    if (vaccines.length === 0) return null;
+    const allApplied = vaccines.every((v) => v.vaccine_event?.applied_at);
+    return allApplied ? "applied" : "pending";
+  };
 
   const years = Array.from({ length: 11 }, (_, i) => today.getFullYear() - 5 + i);
 
   return (
     <div className="text-center">
+      {/* === Encabezado del calendario === */}
       <div className="flex flex-wrap justify-between items-center mb-4 gap-3">
         <div className="flex items-center gap-2">
-          <button onClick={prevMonth} className="px-3 py-1 border rounded-lg hover:bg-gray-100">
-            ←
-          </button>
-          <select
-            value={currentMonth}
-            onChange={handleMonthChange}
-            className="border rounded-lg px-2 py-1 text-sm"
-          >
-            {months.map((m, i) => (
-              <option key={m} value={i}>
-                {m}
-              </option>
-            ))}
+          <button onClick={prevMonth} className="px-3 py-1 border rounded-lg hover:bg-gray-100">←</button>
+          <select value={currentMonth} onChange={handleMonthChange} className="border rounded-lg px-2 py-1 text-sm">
+            {months.map((m, i) => (<option key={m} value={i}>{m}</option>))}
           </select>
-          <select
-            value={currentYear}
-            onChange={handleYearChange}
-            className="border rounded-lg px-2 py-1 text-sm"
-          >
-            {years.map((y) => (
-              <option key={y} value={y}>
-                {y}
-              </option>
-            ))}
+          <select value={currentYear} onChange={handleYearChange} className="border rounded-lg px-2 py-1 text-sm">
+            {years.map((y) => (<option key={y} value={y}>{y}</option>))}
           </select>
-          <button onClick={nextMonth} className="px-3 py-1 border rounded-lg hover:bg-gray-100">
-            →
-          </button>
+          <button onClick={nextMonth} className="px-3 py-1 border rounded-lg hover:bg-gray-100">→</button>
         </div>
 
         <span className="text-sm text-gray-500">
           Hoy es{" "}
           {today.toLocaleDateString("es-CL", {
-            weekday: "long",
-            day: "numeric",
-            month: "long",
-            year: "numeric",
+            weekday: "long", day: "numeric", month: "long", year: "numeric",
           })}
         </span>
       </div>
 
       <div className="grid grid-cols-7 gap-2 text-sm font-medium text-gray-600">
-        {["Lun", "Mar", "Mié", "Jue", "Vie", "Sáb", "Dom"].map((d) => (
-          <div key={d}>{d}</div>
-        ))}
+        {["Lun", "Mar", "Mié", "Jue", "Vie", "Sáb", "Dom"].map((d) => (<div key={d}>{d}</div>))}
       </div>
 
       <div className="grid grid-cols-7 gap-2 text-sm mt-1">
         {calendarDays.map((day, i) => {
           if (!day) return <div key={i} />;
-          const isToday =
-            day === today.getDate() &&
+          const isToday = day === today.getDate() &&
             currentMonth === today.getMonth() &&
             currentYear === today.getFullYear();
-
           const dateObj = new Date(currentYear, currentMonth, day);
+          const vaccineStatus = getVaccineStatus(day);
 
           return (
             <div
               key={i}
               onClick={() => onDayClick?.(dateObj)}
-              className={`cursor-pointer h-14 flex flex-col items-center justify-center rounded-lg border relative transition ${isToday
-                ? "bg-pink-500 text-white"
-                : "bg-white text-gray-700 hover:bg-gray-100"
-                }`}
+              className={`cursor-pointer h-14 flex flex-col items-center justify-center rounded-lg border transition 
+                ${isToday ? "bg-pink-500 text-white" :
+                  vaccineStatus === "applied" ? "bg-green-100 text-green-700 border-green-400" :
+                    vaccineStatus === "pending" ? "bg-red-100 text-red-700 border-red-400" :
+                      "bg-white text-gray-700 hover:bg-gray-100"}`}
             >
               <span>{day}</span>
-              <div className="absolute bottom-1 flex gap-1">
-                {hasRoutine(day) && (
-                  <span className="w-2 h-2 bg-blue-500 rounded-full"></span>
-                )}
-                {hasEvent(day) && (
-                  <span className="w-2 h-2 bg-green-500 rounded-full"></span>
-                )}
-              </div>
             </div>
           );
         })}
@@ -1744,6 +1763,27 @@ function EventModal({ open, date, events, onClose, petId, eventTypes, onEventAdd
     setSaving(false);
   };
 
+  const handleMarkAsApplied = async (eventId) => {
+    const applied_at = prompt("Ingrese la fecha de aplicación (YYYY-MM-DD):");
+    const vet_name = prompt("Ingrese el nombre de la veterinaria:");
+
+    if (!applied_at) return alert("Debe ingresar una fecha válida.");
+
+    const { error } = await supabase
+      .schema("petcare")
+      .from("vaccine_event")
+      .update({ applied_at, vet_name })
+      .eq("event_id", eventId);
+
+    if (error) {
+      console.error(error);
+      alert("Error al registrar la aplicación de vacuna.");
+    } else {
+      alert("Vacuna registrada como aplicada.");
+      onEventAdded(); // refresca
+    }
+  };
+
   return (
     <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50">
       <div className="bg-white rounded-2xl shadow-xl w-full max-w-lg p-6 relative">
@@ -1763,7 +1803,10 @@ function EventModal({ open, date, events, onClose, petId, eventTypes, onEventAdd
         ) : (
           <ul className="space-y-4 mt-4 max-h-80 overflow-y-auto pr-2">
             {events.map((ev) => (
-              <li key={ev.event_id} className="border rounded-xl p-4 bg-gray-50 text-left">
+              <li
+                key={ev.event_id}
+                className="border rounded-xl p-4 bg-gray-50 text-left"
+              >
                 <p className="font-medium text-gray-800">
                   {ev.event_type_catalog?.display_name || "Evento sin tipo"}
                 </p>
@@ -1782,11 +1825,22 @@ function EventModal({ open, date, events, onClose, petId, eventTypes, onEventAdd
                   </p>
                 )}
 
-                {ev.vaccine_event?.next_due_date && (
-                  <p className="text-xs text-green-600 mt-1">
-                    💉 Próxima dosis:{" "}
-                    {new Date(ev.vaccine_event.next_due_date).toLocaleDateString("es-CL")}
-                  </p>
+                {/* 💉 Vacunas: mostrar botón o estado */}
+                {ev.event_type_catalog?.display_name?.toLowerCase().includes("vacuna") && (
+                  !ev.vaccine_event?.applied_at ? (
+                    <button
+                      onClick={() => handleMarkAsApplied(ev.event_id)}
+                      className="mt-2 text-xs text-blue-600 hover:underline"
+                    >
+                      Marcar como aplicada
+                    </button>
+                  ) : (
+                    <p className="text-xs text-green-600 mt-2">
+                      Aplicada el{" "}
+                      {new Date(ev.vaccine_event.applied_at).toLocaleDateString("es-CL")}
+                      {ev.vaccine_event.vet_name && ` en ${ev.vaccine_event.vet_name}`}
+                    </p>
+                  )
                 )}
               </li>
             ))}
