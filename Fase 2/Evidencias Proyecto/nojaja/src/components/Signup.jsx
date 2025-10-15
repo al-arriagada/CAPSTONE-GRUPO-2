@@ -135,7 +135,7 @@ export default function Signup() {
       uppercase: /[A-Z]/.test(p),
       lowercase: /[a-z]/.test(p),
       number: /[0-9]/.test(p),
-      special: /[!@#$%^&*(),.?":{}|<>_\-+=\[\]\\\/]/.test(p),
+      special: /[!@#$%^&*(),.?":{}|<>_\-+=[\]\\/]/.test(p),
     };
     setPasswordStrength(strength);
     return Object.values(strength).every(Boolean);
