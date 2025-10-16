@@ -360,6 +360,7 @@ export default function Signup() {
               >
                 <option value="owner">Dueño/a</option>
                 <option value="vet">Veterinario/a</option>
+                <option value="caregiver">Cuidador/a</option>
               </select>
             </div>
 

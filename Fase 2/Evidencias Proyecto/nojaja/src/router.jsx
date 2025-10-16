@@ -18,6 +18,8 @@ import RedirectAuthHome from "./components/RedirectAuthHome.jsx";
 import ProtectedRouteByRole from "./components/ProtectedRouteByRole.jsx";
 import VetDashboard from "./components/vet/VetDashboard.jsx";
 import PetHealthReport from "./components/PetHealthReport.jsx";
+import CaregiverHome from "./components/caregiver/CaregiverHome.jsx";
+
 
 const router = createBrowserRouter([
   // Rutas públicas
@@ -129,6 +131,27 @@ const router = createBrowserRouter([
         ),
       },
       // { path: "pets/:petId", element: <VetPetDetail /> }, // cuando lo tengas
+    ],
+  },
+
+  {
+    path: "/caregiver",
+    element: (
+      <ProtectedRouteByRole allowedRoles={["caregiver"]}>
+        <AppLayout />
+      </ProtectedRouteByRole>
+    ),
+    children: [
+      { index: true, element: <CaregiverHome /> },
+      {
+        path: "profile",
+        element: (
+          <ProtectedRoute>
+            <OwnerProfile />
+          </ProtectedRoute>
+        ),
+      },
+    
     ],
   },
   // Reset / Update Password

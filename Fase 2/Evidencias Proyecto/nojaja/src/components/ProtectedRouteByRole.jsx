@@ -8,7 +8,6 @@ export default function ProtectedRouteByRole({ allowedRoles, children }) {
   const { user, loading } = useAuth();
   const { role, loading: loadingRole } = useUserRole();
 
-  // ⬇️ Timeout de seguridad de 3s para no quedar pegado
   const [expired, setExpired] = useState(false);
   const timer = useRef(null);
   useEffect(() => {
@@ -16,20 +15,33 @@ export default function ProtectedRouteByRole({ allowedRoles, children }) {
     return () => clearTimeout(timer.current);
   }, []);
 
-  if (loading) {
+  if (loading || (loadingRole && !expired)) {
     return <div className="min-h-screen flex items-center justify-center">Cargando…</div>;
   }
-  if (!user) return <Navigate to="/signin" replace />;
-
-  const stillLoading = loadingRole && !expired;
-  if (stillLoading) {
-    return <div className="min-h-screen flex items-center justify-center">Cargando…</div>;
+  
+  if (!user) {
+    return <Navigate to="/signin" replace />;
   }
 
   const effectiveRole = role || "owner"; // fallback
+
+
   if (!allowedRoles.includes(effectiveRole)) {
-    return <Navigate to={effectiveRole === "vet" ? "/vet" : "/app"} replace />;
+    
+ 
+    switch (effectiveRole) {
+      case 'owner':
+        return <Navigate to="/app" replace />;
+      case 'vet':
+        return <Navigate to="/vet" replace />;
+      case 'caregiver':
+        return <Navigate to="/caregiver" replace />;
+      default:
+        
+        return <Navigate to="/app" replace />;
+    }
   }
 
+  // Si el rol sí está permitido, muestra el contenido de la ruta.
   return children;
 }
