@@ -1,3 +1,10 @@
 {
-  "imports": {}
+  "imports": {
+    "@supabase/supabase-js": "https://esm.sh/@supabase/supabase-js@2",
+    "jose": "https://esm.sh/jose@5.2.4"
+  },
+  "compilerOptions": {
+    "experimentalDecorators": true
+  },
+  "lock": false
 }
