@@ -3,22 +3,6 @@ import { supabase } from "../supabaseClient";
 import { useAuth } from "../context/AuthContext";
 import { useParams } from "react-router-dom";
 
-/**
- * EventLog.jsx (reworked)
- *
- * Cumple con los flujos solicitados por tipo de evento usando el esquema petcare v3.
- * Tablas usadas: app_user, pet, event, event_type_catalog, vaccine, vaccine_event,
- * clinic, vet, comuna y region.
- *
- * Notas de modelo importantes:
- * - event.e_description: <= 250 chars (CHECK en BD)
- * - event.var_weight: { value: number, date: YYYY-MM-DD }
- * - vaccine_event: guarda next_due_date, vaccine_batch, vaccine_dose_number,
- *   vaccine_expiration_date y FK vaccine_id/event_id.
- * - event.clinic_id y event.vet_id se asignan según flujo.
- * - "¿A domicilio?": Si = ocultar clínica y mostrar veterinarios por comuna via app_user.comuna_id.
- */
-
 export default function EventLog({ petId: propPetId }) {
   const { id } = useParams();
   const petId = propPetId || id;
