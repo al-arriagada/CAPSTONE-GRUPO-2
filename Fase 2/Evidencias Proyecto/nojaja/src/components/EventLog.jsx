@@ -32,36 +32,27 @@ export default function EventLog({ petId: propPetId }) {
   // Form state
   const [formData, setFormData] = useState({
     e_type_id: "",
-    domicilio: "no", // "si" | "no"
+    domicilio: "no",
     region_id: "",
     comuna_id: "",
     clinic_id: "",
     vet_id: "",
-    // "Descripción" (event.e_description)
     e_description: "",
-
-    // Peso (solo weight_logged)
-    weight_value: "", // number as string
-
-    // Walk
+    weight_value: "",
     duration_min: "",
     distance_m: "",
-
-    // Vaccine
     vaccine_id: "",
     next_due_date: "",
     vaccine_batch: "",
     vaccine_dose_number: "",
     vaccine_expiration_date: "",
-
-    // Autorelleno de clínica en details (no editables)
     clinic_name: "",
     clinic_address: "",
     clinic_phone: "",
   });
 
   /** Helpers */
-  const todayISO = () => new Date().toISOString().slice(0, 10); // YYYY-MM-DD
+  const todayISO = () => new Date().toISOString().slice(0, 10);
 
   const getEventIcon = (eventTypeId) => {
     const icons = {
@@ -80,86 +71,197 @@ export default function EventLog({ petId: propPetId }) {
 
   /** Cargas iniciales */
   const loadEventTypes = async () => {
-    const { data, error } = await supabase
-      .schema("petcare")
-      .from("event_type_catalog")
-      .select("event_type_id, display_name")
-      .order("display_name");
-    if (!error) setEventTypes(data || []);
+    if (!user) return;
+    
+    try {
+      const { data, error } = await supabase
+        .schema("petcare")
+        .from("event_type_catalog")
+        .select("event_type_id, display_name")
+        .order("display_name");
+      
+      if (error) {
+        console.error("Error loading event types:", error);
+        return;
+      }
+      setEventTypes(data || []);
+    } catch (err) {
+      console.error("Exception loading event types:", err);
+    }
   };
 
   const loadRegions = async () => {
-    const { data, error } = await supabase
-      .schema("petcare")
-      .from("region")
-      .select("region_id, name")
-      .order("name");
-    if (!error) setRegions(data || []);
+    if (!user) return;
+    
+    try {
+      const { data, error } = await supabase
+        .schema("petcare")
+        .from("region")
+        .select("region_id, name")
+        .order("name");
+      
+      if (error) {
+        console.error("Error loading regions:", error);
+        return;
+      }
+      setRegions(data || []);
+    } catch (err) {
+      console.error("Exception loading regions:", err);
+    }
   };
 
   const loadPet = async () => {
-    if (!petId) return;
-    const { data, error } = await supabase
-      .schema("petcare")
-      .from("pet")
-      .select("species_id")
-      .eq("pet_id", petId)
-      .maybeSingle();
-    if (!error && data) setPetSpeciesId(data.species_id);
+    if (!petId || !user) return;
+    
+    try {
+      const { data, error } = await supabase
+        .schema("petcare")
+        .from("pet")
+        .select("species_id")
+        .eq("pet_id", petId)
+        .maybeSingle();
+      
+      if (error) {
+        console.error("Error loading pet:", error);
+        return;
+      }
+      if (data) setPetSpeciesId(data.species_id);
+    } catch (err) {
+      console.error("Exception loading pet:", err);
+    }
   };
 
   const loadVaccinesBySpecies = async (speciesId) => {
-    if (!speciesId) {
+    if (!speciesId || !user) {
       setVaccines([]);
       return;
     }
-    const { data, error } = await supabase
-      .schema("petcare")
-      .from("vaccine")
-      .select("vaccine_id, name")
-      .eq("species_id", speciesId)
-      .order("name");
-    if (!error) setVaccines(data || []);
+    
+    try {
+      const { data, error } = await supabase
+        .schema("petcare")
+        .from("vaccine")
+        .select("vaccine_id, name")
+        .eq("species_id", speciesId)
+        .order("name");
+      
+      if (error) {
+        console.error("Error loading vaccines:", error);
+        return;
+      }
+      setVaccines(data || []);
+    } catch (err) {
+      console.error("Exception loading vaccines:", err);
+    }
   };
 
-  /** Historial */
+  /** Historial - Consulta simplificada */
   const loadEvents = useCallback(async () => {
-    if (!petId) {
+    if (!petId || !user) {
       setEvents([]);
       setLoading(false);
       return;
     }
+    
     setLoading(true);
-    const { data, error } = await supabase
-      .schema("petcare")
-      .from("event")
-      .select(
-        `*, event_type_catalog!inner(event_type_id, display_name), clinic:clinic_id(name,address,phone), vet:vet_id(full_name)`
-      )
-      .eq("pet_id", petId)
-      .order("ts", { ascending: false });
-    if (!error) setEvents(data || []);
-    setLoading(false);
-  }, [petId]);
+    try {
+      // Primero cargar los eventos básicos
+      const { data: eventsData, error: eventsError } = await supabase
+        .schema("petcare")
+        .from("event")
+        .select("*")
+        .eq("pet_id", petId)
+        .order("ts", { ascending: false });
+
+      if (eventsError) {
+        console.error("Error loading events:", eventsError);
+        setError("No se pudieron cargar los eventos. Verifica los permisos.");
+        setLoading(false);
+        return;
+      }
+
+      // Enriquecer con datos relacionados
+      const enrichedEvents = await Promise.all(
+        (eventsData || []).map(async (event) => {
+          try {
+            // Cargar event_type
+            const { data: eventType } = await supabase
+              .schema("petcare")
+              .from("event_type_catalog")
+              .select("event_type_id, display_name")
+              .eq("event_type_id", event.e_type_id)
+              .single();
+
+            // Cargar clinic si existe
+            let clinic = null;
+            if (event.clinic_id) {
+              const { data: clinicData } = await supabase
+                .schema("petcare")
+                .from("clinic")
+                .select("name, address, phone")
+                .eq("clinic_id", event.clinic_id)
+                .single();
+              clinic = clinicData;
+            }
+
+            // Cargar vet si existe
+            let vet = null;
+            if (event.vet_id) {
+              const { data: vetData } = await supabase
+                .schema("petcare")
+                .from("vet")
+                .select("full_name")
+                .eq("vet_id", event.vet_id)
+                .single();
+              vet = vetData;
+            }
+
+            return {
+              ...event,
+              event_type_catalog: eventType,
+              clinic: clinic,
+              vet: vet,
+            };
+          } catch (err) {
+            console.error("Error enriching event:", err);
+            return event;
+          }
+        })
+      );
+
+      setEvents(enrichedEvents);
+    } catch (err) {
+      console.error("Exception loading events:", err);
+      setError("Error al cargar eventos");
+    } finally {
+      setLoading(false);
+    }
+  }, [petId, user]);
 
   useEffect(() => {
-    loadEventTypes();
-    loadRegions();
-    loadPet();
-  }, [petId]);
+    if (user) {
+      loadEventTypes();
+      loadRegions();
+      loadPet();
+    }
+  }, [petId, user]);
 
   useEffect(() => {
-    if (petSpeciesId) loadVaccinesBySpecies(petSpeciesId);
-  }, [petSpeciesId]);
+    if (petSpeciesId && user) {
+      loadVaccinesBySpecies(petSpeciesId);
+    }
+  }, [petSpeciesId, user]);
 
   useEffect(() => {
-    // Cargar historial al entrar
-    loadEvents();
-  }, [loadEvents]);
+    if (user) {
+      loadEvents();
+    }
+  }, [loadEvents, user]);
 
   /** Cascadas Region -> Comuna */
   useEffect(() => {
-    // Limpiar selecciones dependientes
+    if (!user) return;
+    
     setFormData((p) => ({
       ...p,
       comuna_id: "",
@@ -179,19 +281,37 @@ export default function EventLog({ petId: propPetId }) {
     }
 
     (async () => {
-      const { data, error } = await supabase
-        .schema("petcare")
-        .from("comuna")
-        .select("comuna_id, name")
-        .eq("region_id", formData.region_id)
-        .order("name");
-      if (!error) setComunas(data || []);
+      try {
+        const { data, error } = await supabase
+          .schema("petcare")
+          .from("comuna")
+          .select("comuna_id, name")
+          .eq("region_id", formData.region_id)
+          .order("name");
+        
+        if (error) {
+          console.error("Error loading comunas:", error);
+          return;
+        }
+        setComunas(data || []);
+      } catch (err) {
+        console.error("Exception loading comunas:", err);
+      }
     })();
-  }, [formData.region_id]);
+  }, [formData.region_id, user]);
 
   /** Comuna -> Clínicas y Vets (a domicilio) */
   useEffect(() => {
-    setFormData((p) => ({ ...p, clinic_id: "", vet_id: "", clinic_name: "", clinic_address: "", clinic_phone: "" }));
+    if (!user) return;
+    
+    setFormData((p) => ({ 
+      ...p, 
+      clinic_id: "", 
+      vet_id: "", 
+      clinic_name: "", 
+      clinic_address: "", 
+      clinic_phone: "" 
+    }));
     setClinics([]);
     setVetsByClinic([]);
     setVetsByComuna([]);
@@ -199,107 +319,140 @@ export default function EventLog({ petId: propPetId }) {
     if (!formData.comuna_id) return;
 
     (async () => {
-      // Clínicas por comuna
-      const { data: cData } = await supabase
-        .schema("petcare")
-        .from("clinic")
-        .select("clinic_id, name, address, phone")
-        .eq("comuna_id", formData.comuna_id)
-        .order("name");
-      setClinics(cData || []);
+      try {
+        // Clínicas por comuna
+        const { data: cData, error: cError } = await supabase
+          .schema("petcare")
+          .from("clinic")
+          .select("clinic_id, name, address, phone")
+          .eq("comuna_id", formData.comuna_id)
+          .order("name");
+        
+        if (cError) {
+          console.error("Error loading clinics:", cError);
+        } else {
+          setClinics(cData || []);
+        }
 
-      // Vets por comuna (vía app_user)
-      // 1) obtener usuarios en la comuna
-      const { data: usersData } = await supabase
-        .schema("petcare")
-        .from("app_user")
-        .select("user_id")
-        .eq("comuna_id", formData.comuna_id);
+        // Vets por comuna (vía app_user)
+        const { data: usersData, error: usersError } = await supabase
+          .schema("petcare")
+          .from("app_user")
+          .select("user_id")
+          .eq("comuna_id", formData.comuna_id);
 
-      const userIds = (usersData || []).map((u) => u.user_id);
-      if (userIds.length === 0) {
-        setVetsByComuna([]);
-        return;
+        if (usersError) {
+          console.error("Error loading users:", usersError);
+          return;
+        }
+
+        const userIds = (usersData || []).map((u) => u.user_id);
+        if (userIds.length === 0) {
+          setVetsByComuna([]);
+          return;
+        }
+
+        const { data: vetsData, error: vetsError } = await supabase
+          .schema("petcare")
+          .from("vet")
+          .select("vet_id, full_name, clinic_id, user_id")
+          .in("user_id", userIds)
+          .order("full_name");
+        
+        if (vetsError) {
+          console.error("Error loading vets:", vetsError);
+        } else {
+          setVetsByComuna(vetsData || []);
+        }
+      } catch (err) {
+        console.error("Exception loading clinics/vets:", err);
       }
-      // 2) obtener vets cuyo user_id esté en esos usuarios
-      const { data: vetsData } = await supabase
-        .schema("petcare")
-        .from("vet")
-        .select("vet_id, full_name, clinic_id, user_id")
-        .in("user_id", userIds)
-        .order("full_name");
-      setVetsByComuna(vetsData || []);
     })();
-  }, [formData.comuna_id]);
+  }, [formData.comuna_id, user]);
 
   /** Clínica -> Veterinarios */
   useEffect(() => {
+    if (!user) return;
+    
     setVetsByClinic([]);
 
     if (!formData.clinic_id) {
-      // limpiar autorelleno
-      setFormData((p) => ({ ...p, clinic_name: "", clinic_address: "", clinic_phone: "" }));
+      setFormData((p) => ({ 
+        ...p, 
+        clinic_name: "", 
+        clinic_address: "", 
+        clinic_phone: "" 
+      }));
       return;
     }
 
     (async () => {
-      // Autorelleno de datos de clínica seleccionada
-      const clinic = clinics.find((c) => c.clinic_id === formData.clinic_id);
-      setFormData((p) => ({
-        ...p,
-        clinic_name: clinic?.name || "",
-        clinic_address: clinic?.address || "",
-        clinic_phone: clinic?.phone || "",
-      }));
+      try {
+        const clinic = clinics.find((c) => c.clinic_id === formData.clinic_id);
+        setFormData((p) => ({
+          ...p,
+          clinic_name: clinic?.name || "",
+          clinic_address: clinic?.address || "",
+          clinic_phone: clinic?.phone || "",
+        }));
 
-      // Vets por clínica
-      const { data, error } = await supabase
-        .schema("petcare")
-        .from("vet")
-        .select("vet_id, full_name")
-        .eq("clinic_id", formData.clinic_id)
-        .order("full_name");
-      if (!error) setVetsByClinic(data || []);
+        const { data, error } = await supabase
+          .schema("petcare")
+          .from("vet")
+          .select("vet_id, full_name")
+          .eq("clinic_id", formData.clinic_id)
+          .order("full_name");
+        
+        if (error) {
+          console.error("Error loading vets by clinic:", error);
+          return;
+        }
+        setVetsByClinic(data || []);
+      } catch (err) {
+        console.error("Exception loading vets by clinic:", err);
+      }
     })();
-  }, [formData.clinic_id, clinics]);
+  }, [formData.clinic_id, clinics, user]);
 
   /** Guardado */
   const handleSubmit = async (e) => {
     e.preventDefault();
     setError("");
 
-    if (!formData.e_type_id) return setError("Selecciona un tipo de evento");
+    if (!user) {
+      setError("Debes iniciar sesión para guardar eventos");
+      return;
+    }
 
-    // Validaciones por tipo
+    if (!formData.e_type_id) {
+      setError("Selecciona un tipo de evento");
+      return;
+    }
+
     const typeId = formData.e_type_id;
     const domicilio = formData.domicilio === "si";
 
     try {
       setSaving(true);
 
-      // Construcción objeto base de event
       const eventData = {
         pet_id: petId,
-        user_id: user?.id || null,
+        user_id: user.id,
         e_type_id: typeId,
         ts: new Date().toISOString(),
       };
 
-      // Descripción (opcional, <= 250)
       if (formData.e_description?.trim()) {
         eventData.e_description = formData.e_description.trim();
       }
 
-      // Pesos / Walk / Dosis / Ubicación
       if (["vaccine_administered", "medication_dose", "routine_check"].includes(typeId)) {
-        // Región no se guarda; Comuna sí
         if (formData.comuna_id) eventData.comuna_id = parseInt(formData.comuna_id);
 
         if (!domicilio) {
           if (formData.clinic_id) eventData.clinic_id = formData.clinic_id;
           if (formData.vet_id) eventData.vet_id = formData.vet_id;
 
-          // details con datos de clínica
           if (formData.clinic_name || formData.clinic_phone || formData.clinic_address) {
             eventData.details = {
               name: formData.clinic_name || null,
@@ -308,7 +461,6 @@ export default function EventLog({ petId: propPetId }) {
             };
           }
         } else {
-          // A domicilio: sin clínica, con vet_id por comuna si se eligió
           if (formData.vet_id) eventData.vet_id = formData.vet_id;
         }
       }
@@ -329,7 +481,6 @@ export default function EventLog({ petId: propPetId }) {
         if (formData.distance_m) eventData.distance_m = parseInt(formData.distance_m);
       }
 
-      // Inserción del evento (devolviendo event_id)
       const { data: inserted, error: insertErr } = await supabase
         .schema("petcare")
         .from("event")
@@ -340,7 +491,6 @@ export default function EventLog({ petId: propPetId }) {
       if (insertErr) throw insertErr;
       const newEventId = inserted.event_id;
 
-      // Si es vacuna, insertar en vaccine_event
       if (typeId === "vaccine_administered") {
         if (!formData.vaccine_id) throw new Error("Seleccione la vacuna aplicada");
 
@@ -360,7 +510,6 @@ export default function EventLog({ petId: propPetId }) {
         if (veErr) throw veErr;
       }
 
-      // Limpiar y cerrar
       setFormData({
         e_type_id: eventTypes[0]?.event_type_id || "",
         domicilio: "no",
@@ -393,12 +542,23 @@ export default function EventLog({ petId: propPetId }) {
 
   const handleDelete = async (eventId) => {
     if (!confirm("¿Eliminar este registro?")) return;
-    const { error } = await supabase.schema("petcare").from("event").delete().eq("event_id", eventId);
-    if (error) {
-      alert(`Error al eliminar: ${error.message || "Verifique su conexión o permisos RLS."}`);
-      return;
+    
+    try {
+      const { error } = await supabase
+        .schema("petcare")
+        .from("event")
+        .delete()
+        .eq("event_id", eventId);
+      
+      if (error) {
+        alert(`Error al eliminar: ${error.message}`);
+        return;
+      }
+      loadEvents();
+    } catch (err) {
+      console.error("Exception deleting event:", err);
+      alert("Error al eliminar el evento");
     }
-    loadEvents();
   };
 
   /** Render dinámico por tipo */
@@ -409,7 +569,6 @@ export default function EventLog({ petId: propPetId }) {
 
     return (
       <>
-        {/* A domicilio */}
         <div className="md:col-span-2">
           <label className="block text-sm font-medium mb-2">¿A domicilio? *</label>
           <div className="flex gap-4">
@@ -436,7 +595,6 @@ export default function EventLog({ petId: propPetId }) {
           </div>
         </div>
 
-        {/* Región (solo filtro) */}
         <div>
           <label className="block text-sm font-medium mb-2">Región</label>
           <select
@@ -451,7 +609,6 @@ export default function EventLog({ petId: propPetId }) {
           </select>
         </div>
 
-        {/* Comuna (se guarda en event.comuna_id) */}
         <div>
           <label className="block text-sm font-medium mb-2">Comuna</label>
           <select
@@ -466,10 +623,8 @@ export default function EventLog({ petId: propPetId }) {
           </select>
         </div>
 
-        {/* Flujos según domicilio */}
         {!domicilio ? (
           <>
-            {/* Clínica por comuna */}
             <div className="md:col-span-2">
               <label className="block text-sm font-medium mb-2">Nombre de la clínica</label>
               <select
@@ -484,7 +639,6 @@ export default function EventLog({ petId: propPetId }) {
               </select>
             </div>
 
-            {/* Autorelleno Dirección / Teléfono (no editables, se guardan en event.details) */}
             <div>
               <label className="block text-sm font-medium mb-2">Dirección</label>
               <input type="text" className="w-full px-3 py-2 border rounded-lg bg-gray-100" value={formData.clinic_address} readOnly />
@@ -494,7 +648,6 @@ export default function EventLog({ petId: propPetId }) {
               <input type="text" className="w-full px-3 py-2 border rounded-lg bg-gray-100" value={formData.clinic_phone} readOnly />
             </div>
 
-            {/* Veterinario por clínica */}
             <div className="md:col-span-2">
               <label className="block text-sm font-medium mb-2">Veterinario</label>
               <select
@@ -511,7 +664,6 @@ export default function EventLog({ petId: propPetId }) {
           </>
         ) : (
           <>
-            {/* Veterinario por comuna (vía app_user) */}
             <div className="md:col-span-2">
               <label className="block text-sm font-medium mb-2">Veterinario</label>
               <select
@@ -535,7 +687,6 @@ export default function EventLog({ petId: propPetId }) {
     if (typeId !== "vaccine_administered") return null;
     return (
       <>
-        {/* Vacuna por especie */}
         <div className="md:col-span-2">
           <label className="block text-sm font-medium mb-2">Nombre de la vacuna</label>
           <select
@@ -679,6 +830,15 @@ export default function EventLog({ petId: propPetId }) {
     </div>
   );
 
+  // Mostrar mensaje si no hay usuario
+  if (!user) {
+    return (
+      <div className="text-center py-8">
+        <p className="text-gray-600">Debes iniciar sesión para ver el historial de eventos</p>
+      </div>
+    );
+  }
+
   if (loading) return <div className="text-center py-8">Cargando historial...</div>;
 
   return (
@@ -717,22 +877,27 @@ export default function EventLog({ petId: propPetId }) {
               </select>
             </div>
 
-            {/* Bloque geo/atención (para vacuna/medicación/chequeo) */}
             {renderGeoClinicVetBlock(formData.e_type_id)}
-
-            {/* Bloques específicos */}
             {renderVaccineBlock(formData.e_type_id)}
             {renderMedicationBlock(formData.e_type_id)}
             {renderWeightBlock(formData.e_type_id)}
             {renderWalkBlock(formData.e_type_id)}
-
-            {/* Descripción (presente en todos los casos menos que el usuario no quiera) */}
             {renderDescription()}
           </div>
 
           <div className="mt-4 flex justify-end gap-2">
-            <button type="button" onClick={() => setShowForm(false)} className="px-4 py-2 border rounded-lg hover:bg-gray-50">Cancelar</button>
-            <button type="submit" disabled={saving} className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 disabled:opacity-50">
+            <button 
+              type="button" 
+              onClick={() => setShowForm(false)} 
+              className="px-4 py-2 border rounded-lg hover:bg-gray-50"
+            >
+              Cancelar
+            </button>
+            <button 
+              type="submit" 
+              disabled={saving} 
+              className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 disabled:opacity-50"
+            >
               {saving ? "Guardando..." : "Guardar Evento"}
             </button>
           </div>
@@ -750,9 +915,15 @@ export default function EventLog({ petId: propPetId }) {
                   <div className="flex items-center gap-3 mb-2">
                     <span className="text-2xl">{getEventIcon(event.e_type_id)}</span>
                     <div>
-                      <h4 className="font-semibold">{event.event_type_catalog?.display_name}</h4>
+                      <h4 className="font-semibold">{event.event_type_catalog?.display_name || event.e_type_id}</h4>
                       <p className="text-sm text-gray-500">
-                        {new Date(event.ts).toLocaleDateString("es-ES", { day: "2-digit", month: "long", year: "numeric", hour: "2-digit", minute: "2-digit" })}
+                        {new Date(event.ts).toLocaleDateString("es-ES", { 
+                          day: "2-digit", 
+                          month: "long", 
+                          year: "numeric", 
+                          hour: "2-digit", 
+                          minute: "2-digit" 
+                        })}
                       </p>
                     </div>
                   </div>
@@ -766,7 +937,6 @@ export default function EventLog({ petId: propPetId }) {
                     {event.distance_m && <p className="text-gray-700">📏 Distancia: {event.distance_m} m</p>}
                     {event.e_description && <p className="text-gray-700">{event.e_description}</p>}
 
-                    {/* Clínica y vet (si existen) */}
                     {(event.clinic || event.vet) && (
                       <div className="mt-2 text-sm text-gray-600 bg-gray-50 p-3 rounded-lg">
                         {event.clinic?.name && <p className="font-medium">🏥 {event.clinic.name}</p>}
@@ -776,8 +946,8 @@ export default function EventLog({ petId: propPetId }) {
                       </div>
                     )}
 
-                    {/* details guardado para clínica seleccionada */}
-                    {event.details && typeof event.details === "object" && (event.details.name || event.details.phone || event.details.address) && (
+                    {event.details && typeof event.details === "object" && 
+                     (event.details.name || event.details.phone || event.details.address) && (
                       <div className="mt-2 text-sm text-gray-600 bg-gray-50 p-3 rounded-lg">
                         {event.details.name && <p className="font-medium">🏥 {event.details.name}</p>}
                         {event.details.phone && <p>📞 {event.details.phone}</p>}
@@ -787,7 +957,10 @@ export default function EventLog({ petId: propPetId }) {
                   </div>
                 </div>
 
-                <button onClick={() => handleDelete(event.event_id)} className="ml-4 text-red-600 hover:text-red-800 text-sm">
+                <button 
+                  onClick={() => handleDelete(event.event_id)} 
+                  className="ml-4 text-red-600 hover:text-red-800 text-sm"
+                >
                   Eliminar
                 </button>
               </div>
