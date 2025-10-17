@@ -1,15 +1,15 @@
 // src/components/caregiver/CaregiverHome.jsx
 import React, { useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { useAuth } from "../../context/AuthContext.jsx"; // 👈 AQUÍ ESTÁ LA CORRECCIÓN
+import { useAuth } from "../../context/AuthContext.jsx"; 
 
-// Este es el componente principal para el dashboard del cuidador
+
 export default function CaregiverHome() {
   const { user } = useAuth();
   const navigate = useNavigate();
-  const [tab, setTab] = useState("horario"); // La pestaña activa por defecto
+  const [tab, setTab] = useState("horario"); 
 
-  // Datos de marcador de posición para un cuidador sin información
+  
   const caregiverName = user?.user_metadata?.name || user?.email?.split("@")[0] || "Cuidador";
   const invitacionesPendientes = 0;
 
