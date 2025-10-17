@@ -151,6 +151,15 @@ const router = createBrowserRouter([
           </ProtectedRoute>
         ),
       },
+
+      {
+        path: "pets/:id",
+        element: (
+          <ProtectedRoute>
+            <PetDetail /> {}
+          </ProtectedRoute>
+        ),
+      },
     
     ],
   },
