@@ -15,7 +15,7 @@ export default function Carousel({ images = [], interval = 5000, alt = "slide" }
     if (!hasImages || images.length <= 1) return;
     timerRef.current = setInterval(next, interval);
     return () => clearInterval(timerRef.current);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+   
   }, [hasImages, images.length, interval]);
 
   const pause = () => clearInterval(timerRef.current);
