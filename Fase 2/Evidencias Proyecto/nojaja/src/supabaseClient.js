@@ -9,9 +9,7 @@ if (!supabaseUrl || !supabaseAnonKey) {
 }
 
 export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
-  global: {
-    schema: 'petcare',
-  },
+  db:{schema: 'petcare'},
   auth: {
     persistSession: true,           // guarda sesión en localStorage
     autoRefreshToken: true,         // renueva el JWT automáticamente
