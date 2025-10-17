@@ -262,26 +262,15 @@ export default function EventLog({ petId: propPetId }) {
         
         if (cData) setClinics(cData);
 
-        // Cargar vets por comuna
-        const { data: usersData } = await supabase
-          .schema("petcare")
-          .from("app_user")
-          .select("user_id")
-          .eq("comuna_id", formData.comuna_id);
-
-        const userIds = (usersData || []).map((u) => u.user_id);
+        // Cargar vets por comuna usando función RPC
+        const { data: vetsData, error: vetsError } = await supabase
+          .rpc('get_vets_by_comuna', { p_comuna_id: parseInt(formData.comuna_id) });
         
-        if (userIds.length > 0) {
-          const { data: vetsData } = await supabase
-            .schema("petcare")
-            .from("vet")
-            .select("vet_id, full_name, clinic_id, user_id")
-            .in("user_id", userIds)
-            .order("full_name");
-          
-          if (vetsData) setVetsByComuna(vetsData);
-        } else {
+        if (vetsError) {
+          console.error("Error loading vets by comuna:", vetsError);
           setVetsByComuna([]);
+        } else {
+          setVetsByComuna(vetsData || []);
         }
       } catch (err) {
         console.error("Error loading clinics/vets:", err);
