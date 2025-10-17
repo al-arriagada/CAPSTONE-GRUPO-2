@@ -262,9 +262,13 @@ export default function EventLog({ petId: propPetId }) {
         
         if (cData) setClinics(cData);
 
-        // Cargar vets por comuna usando función RPC
+        // Cargar vets por comuna (ahora vet tiene comuna_id directamente)
         const { data: vetsData, error: vetsError } = await supabase
-          .rpc('get_vets_by_comuna', { p_comuna_id: parseInt(formData.comuna_id) });
+          .schema("petcare")
+          .from("vet")
+          .select("vet_id, full_name, clinic_id, user_id")
+          .eq("comuna_id", formData.comuna_id)
+          .order("full_name");
         
         if (vetsError) {
           console.error("Error loading vets by comuna:", vetsError);
@@ -342,6 +346,13 @@ export default function EventLog({ petId: propPetId }) {
       return;
     }
 
+    // DEBUG: Ver estructura del user
+    console.log("=== USER DEBUG ===");
+    console.log("User completo:", user);
+    console.log("user.id:", user.id);
+    console.log("user.user_id:", user.user_id);
+    console.log("==================");
+
     if (!formData.e_type_id) {
       setError("Selecciona un tipo de evento");
       return;
@@ -353,12 +364,23 @@ export default function EventLog({ petId: propPetId }) {
     try {
       setSaving(true);
 
+      // Obtener user_id directamente de Supabase Auth
+      const { data: { user: authUser }, error: authError } = await supabase.auth.getUser();
+      
+      if (authError || !authUser) {
+        throw new Error("No se pudo verificar la sesión del usuario");
+      }
+
+      console.log("Auth user ID:", authUser.id);
+
       const eventData = {
         pet_id: petId,
-        user_id: user.id,
+        user_id: authUser.id, // ID directo del usuario autenticado
         e_type_id: typeId,
         ts: new Date().toISOString(),
       };
+
+      console.log("Event data ANTES de agregar campos opcionales:", JSON.stringify(eventData, null, 2));
 
       if (formData.e_description?.trim()) {
         eventData.e_description = formData.e_description.trim();
@@ -385,14 +407,22 @@ export default function EventLog({ petId: propPetId }) {
       if (typeId === "weight_logged") {
         if (!formData.weight_value) throw new Error("Ingrese el peso en kg");
         const val = parseFloat(formData.weight_value);
-        if (!(val > 0 && val < 100)) throw new Error("El peso debe ser > 0 y < 100 kg");
-        eventData.var_weight = { value: val, date: todayISO() };
+        if (isNaN(val) || val <= 0 || val >= 100) {
+          throw new Error("El peso debe ser un número válido entre 0 y 100 kg");
+        }
+        // Guardar en var_weight como JSONB
+        eventData.var_weight = { 
+          value: val, 
+          date: todayISO() 
+        };
       }
 
       if (typeId === "walk") {
         if (formData.duration_min) eventData.duration_min = parseInt(formData.duration_min);
         if (formData.distance_m) eventData.distance_m = parseInt(formData.distance_m);
       }
+
+      console.log("Event data FINAL antes de INSERT:", JSON.stringify(eventData, null, 2));
 
       const { data: inserted, error: insertErr } = await supabase
         .schema("petcare")
@@ -401,7 +431,16 @@ export default function EventLog({ petId: propPetId }) {
         .select("event_id")
         .single();
 
-      if (insertErr) throw insertErr;
+      if (insertErr) {
+        console.error("Error inserting event:", insertErr);
+        console.error("Event data sent:", eventData);
+        throw new Error(insertErr.message || "Error al insertar evento");
+      }
+      
+      if (!inserted) {
+        throw new Error("No se recibió el evento creado");
+      }
+      
       const newEventId = inserted.event_id;
 
       if (typeId === "vaccine_administered") {
@@ -446,7 +485,13 @@ export default function EventLog({ petId: propPetId }) {
       setShowForm(false);
       await loadEvents();
     } catch (err) {
-      console.error(err);
+      console.error("=== ERROR COMPLETO ===");
+      console.error("Error object:", err);
+      console.error("Error message:", err.message);
+      console.error("Error code:", err.code);
+      console.error("Error details:", err.details);
+      console.error("Error hint:", err.hint);
+      console.error("=====================");
       setError(err.message || "Error al guardar el evento");
     } finally {
       setSaving(false);
