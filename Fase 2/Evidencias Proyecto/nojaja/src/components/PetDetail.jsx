@@ -5,6 +5,7 @@ import QRCode from "react-qr-code";
 import { supabase } from "../supabaseClient";
 import { useAuth } from "../context/AuthContext.jsx";
 
+const ALLOWED_EVENT_TYPES = ['heat_cycle', 'medication_dose', 'routine_check', 'vaccine_administered'];
 
 export default function PetDetail() {
   const { id } = useParams();
@@ -34,6 +35,13 @@ export default function PetDetail() {
   const [showEventModal, setShowEventModal] = useState(false);
   const [eventTypes, setEventTypes] = useState([]);
 
+  const [vaccines, setVaccines] = useState([]);
+  const [regions, setRegions] = useState([]);
+  const [comunas, setComunas] = useState([]);
+  const [clinics, setClinics] = useState([]);
+  const [vetsByClinic, setVetsByClinic] = useState([]);
+  const [vetsByComuna, setVetsByComuna] = useState([]);
+
   // === Colaboradores (UI de compartir) ===
   const [members, setMembers] = useState([]);
   const [membersLoading, setMembersLoading] = useState(false);
@@ -55,7 +63,6 @@ export default function PetDetail() {
   // === Lógica del QR: Nuevos estados y referencia ===
   const [qrType, setQrType] = useState("url"); // 'url' o 'vcard'
   const qrCodeRef = useRef(null); // Referencia al contenedor del QR para descargarlo
-
 
   const [formData, setFormData] = useState({
     name: "",
@@ -103,7 +110,7 @@ export default function PetDetail() {
   };
 
   const getSpeciesName = (id) => species.find((sp) => sp.species_id === id)?.display_name || "—";
-  
+
   const loadDocuments = useCallback(async (petId) => {
     if (!petId) return;
     try {
@@ -116,7 +123,7 @@ export default function PetDetail() {
         .order("created_at", { ascending: false });
 
       if (error) throw error;
-      
+
       const enrichedDocuments = (data || []).map(doc => {
         const { data: { publicUrl } } = supabase.storage
           .from("pet-documents")
@@ -134,17 +141,17 @@ export default function PetDetail() {
     }
   }, []);
 
-
   const loadRoutinesAndEvents = async (petId) => {
     const [r, e] = await Promise.all([
       supabase.schema("petcare").from("routine").select("*").eq("pet_id", petId),
-      supabase.schema("petcare").from("event").select("*").eq("pet_id", petId),
+      supabase.schema("petcare").from("event").select("*").eq("pet_id", petId)
+        .in("e_type_id", ALLOWED_EVENT_TYPES), // ← AGREGAR ESTA LÍNEA
     ]);
 
     if (r.data) setRoutines(r.data);
     if (e.data) setEvents(e.data);
   };
-  
+
   const loadPet = useCallback(async () => {
     setLoading(true);
     setError("");
@@ -185,6 +192,17 @@ export default function PetDetail() {
         setOwner(oc);
         await loadRoutinesAndEvents(data.pet_id);
         loadDocuments(data.pet_id);
+
+        // ← AGREGADO: Cargar vacunas por especie
+        if (data.species_id) {
+          const { data: vaccinesData } = await supabase
+            .schema("petcare")
+            .from("vaccine")
+            .select("vaccine_id, name")
+            .eq("species_id", data.species_id)
+            .order("name");
+          if (vaccinesData) setVaccines(vaccinesData);
+        }
       } catch (e) {
         console.warn("No fue posible cargar owner/PII:", e?.message);
       }
@@ -192,11 +210,11 @@ export default function PetDetail() {
     setLoading(false);
   }, [id, loadDocuments]);
 
-
   useEffect(() => {
     loadCatalogs();
     loadEventTypes();
     loadDocTypes();
+    loadRegions();
   }, []);
 
   const loadCatalogs = async () => {
@@ -213,7 +231,15 @@ export default function PetDetail() {
     if (st.data) setStatuses(st.data);
   };
 
-  
+  const loadRegions = async () => {
+    const { data } = await supabase
+      .schema("petcare")
+      .from("region")
+      .select("region_id, name")
+      .order("name");
+    if (data) setRegions(data);
+  };
+
   const loadDocTypes = async () => {
     const { data, error } = await supabase
       .schema("petcare")
@@ -230,12 +256,12 @@ export default function PetDetail() {
     }
   };
 
-
   const loadEventTypes = async () => {
     const { data, error } = await supabase
       .schema("petcare")
       .from("event_type_catalog")
       .select("event_type_id, display_name")
+      .in("event_type_id", ALLOWED_EVENT_TYPES) // ← AGREGAR ESTA LÍNEA
       .order("display_name", { ascending: true });
 
     if (error) {
@@ -265,7 +291,6 @@ export default function PetDetail() {
     loadMembership();
   }, [user, id]);
 
-
   const loadEventsByDate = async (petId, date) => {
     const startOfDay = new Date(date);
     startOfDay.setHours(0, 0, 0, 0);
@@ -276,11 +301,14 @@ export default function PetDetail() {
       .schema("petcare")
       .from("event")
       .select(`
-        *,
-        event_type_catalog(display_name),
-        vaccine_event(next_due_date)
-      `)
+      *,
+      event_type_catalog(display_name),
+      vaccine_event(next_due_date, vaccine_id, vaccine_batch, vaccine_dose_number, vaccine_expiration_date),
+      clinic(name, address, phone),
+      vet(full_name)
+    `)
       .eq("pet_id", petId)
+      .in("e_type_id", ALLOWED_EVENT_TYPES) // ← AGREGAR ESTA LÍNEA
       .gte("ts", startOfDay.toISOString())
       .lte("ts", endOfDay.toISOString())
       .order("ts", { ascending: true });
@@ -543,15 +571,15 @@ export default function PetDetail() {
       event.target.value = null; // Limpiar input
       return;
     }
-    
+
     setUploadingFile(true);
     setError("");
     setSuccess("");
-    
+
     const folderPath = `pet_files/${pet.pet_id}`;
     const fileName = `${new Date().getTime()}_${file.name}`;
     const filePath = `${folderPath}/${fileName}`;
-    
+
     const { error: uploadError } = await supabase
       .storage
       .from("pet-documents")
@@ -597,8 +625,8 @@ export default function PetDetail() {
     setUploadingFile(false);
     event.target.value = null;
   };
-  
- 
+
+
   // === Lógica del QR: Generación de contenido ===
   const qrUrlValue = pet ? `${window.location.origin}/public-pet/${pet.pet_id}` : "";
 
@@ -613,7 +641,7 @@ NOTE:Contacto de emergencia para ${pet.name}. Especie: ${getSpeciesName(pet.spec
 URL:${qrUrlValue}
 END:VCARD`;
   };
-  
+
   const vCardValue = generateVCardString();
   const qrValue = qrType === 'url' ? qrUrlValue : vCardValue;
 
@@ -646,7 +674,7 @@ END:VCARD`;
   const canAddClinical = isOwner || memberCanWrite;
   const canEdit = canEditCore;
   const age = calculateAge(pet.birth_date);
-  
+
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -783,8 +811,8 @@ END:VCARD`;
                 <button
                   onClick={() => setActiveTab("id")}
                   className={`flex-1 px-6 py-4 text-sm font-medium transition-colors ${activeTab === "id"
-                      ? "border-b-2 border-black text-black"
-                      : "text-gray-500 hover:text-gray-700"
+                    ? "border-b-2 border-black text-black"
+                    : "text-gray-500 hover:text-gray-700"
                     }`}
                 >
                   ID
@@ -792,8 +820,8 @@ END:VCARD`;
                 <button
                   onClick={() => setActiveTab("perfil")}
                   className={`flex-1 px-6 py-4 text-sm font-medium transition-colors ${activeTab === "perfil"
-                      ? "border-b-2 border-black text-black"
-                      : "text-gray-500 hover:text-gray-700"
+                    ? "border-b-2 border-black text-black"
+                    : "text-gray-500 hover:text-gray-700"
                     }`}
                 >
                   Perfil
@@ -801,8 +829,8 @@ END:VCARD`;
                 <button
                   onClick={() => setActiveTab("historial")}
                   className={`flex-1 px-6 py-4 text-sm font-medium transition-colors ${activeTab === "historial"
-                      ? "border-b-2 border-black text-black"
-                      : "text-gray-500 hover:text-gray-700"
+                    ? "border-b-2 border-black text-black"
+                    : "text-gray-500 hover:text-gray-700"
                     }`}
                 >
                   Historial médico
@@ -810,8 +838,8 @@ END:VCARD`;
                 {canEdit && (<button
                   onClick={() => setActiveTab("rutinas")}
                   className={`flex-1 px-6 py-4 text-sm font-medium transition-colors ${activeTab === "rutinas"
-                      ? "border-b-2 border-black text-black"
-                      : "text-gray-500 hover:text-gray-700"
+                    ? "border-b-2 border-black text-black"
+                    : "text-gray-500 hover:text-gray-700"
                     }`}
                 >
                   Rutinas y eventos
@@ -819,8 +847,8 @@ END:VCARD`;
                 {canEdit && (<button
                   onClick={() => setActiveTab("colaboradores")}
                   className={`flex-1 px-6 py-4 text-sm font-medium transition-colors ${activeTab === "colaboradores"
-                      ? "border-b-2 border-black text-black"
-                      : "text-gray-500 hover:text-gray-700"
+                    ? "border-b-2 border-black text-black"
+                    : "text-gray-500 hover:text-gray-700"
                     }`}
                 >
                   Colaboradores
@@ -841,13 +869,13 @@ END:VCARD`;
                   <p className="text-gray-600 mb-6">
                     Usa estos códigos QR para identificar a tu mascota. El QR de perfil lleva a una página pública, mientras que el QR de contacto (VCard) permite agregar tus datos al teléfono de quien lo escanee.
                   </p>
-                  
+
                   <div className="w-fit mx-auto my-6" ref={qrCodeRef}>
                     <div className="border border-gray-200 p-3 rounded-2xl bg-white shadow-md">
                       {qrValue ? (
-                        <QRCode 
-                          value={qrValue} 
-                          size={256} 
+                        <QRCode
+                          value={qrValue}
+                          size={256}
                           viewBox={`0 0 256 256`}
                         />
                       ) : (
@@ -860,21 +888,21 @@ END:VCARD`;
 
                   <div className="flex flex-col sm:flex-row justify-center items-center gap-4 mb-8">
                     <div className="flex border rounded-xl p-1 bg-gray-100">
-                        <button 
-                            onClick={() => setQrType('url')}
-                            className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${qrType === 'url' ? 'bg-white shadow-sm' : 'hover:bg-gray-200 text-gray-600'}`}
-                        >
-                            🔗 Perfil Público
-                        </button>
-                        <button 
-                            onClick={() => setQrType('vcard')}
-                            className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${qrType === 'vcard' ? 'bg-white shadow-sm' : 'hover:bg-gray-200 text-gray-600'}`}
-                        >
-                            👤 Contacto (VCard)
-                        </button>
+                      <button
+                        onClick={() => setQrType('url')}
+                        className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${qrType === 'url' ? 'bg-white shadow-sm' : 'hover:bg-gray-200 text-gray-600'}`}
+                      >
+                        🔗 Perfil Público
+                      </button>
+                      <button
+                        onClick={() => setQrType('vcard')}
+                        className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${qrType === 'vcard' ? 'bg-white shadow-sm' : 'hover:bg-gray-200 text-gray-600'}`}
+                      >
+                        👤 Contacto (VCard)
+                      </button>
                     </div>
                   </div>
-                  
+
                   {owner && (
                     <div className="mt-8 p-6 border rounded-2xl bg-gray-50">
                       <h4 className="font-semibold mb-4">
@@ -898,7 +926,7 @@ END:VCARD`;
                           <div className="ml-6 space-y-2 text-sm">
                             <div className="flex items-center gap-2">
                               <div className="w-8 h-8 rounded-full overflow-hidden bg-gray-200">
-                                <img src={pet.image_url || "/placeholder-pet.jpg"} alt={pet.name} className="w-full h-full object-cover"/>
+                                <img src={pet.image_url || "/placeholder-pet.jpg"} alt={pet.name} className="w-full h-full object-cover" />
                               </div>
                               <span>{pet.name}</span>
                             </div>
@@ -954,9 +982,9 @@ END:VCARD`;
                   <div className="border p-4 rounded-xl bg-gray-50">
                     <label className="block mb-2 text-gray-700 font-medium">Subir Documento Médico (PDF/Imagen)</label>
                     {!canAddClinical && (
-                        <p className="text-sm text-red-500 mb-3">
-                          No tienes permisos para subir documentos.
-                        </p>
+                      <p className="text-sm text-red-500 mb-3">
+                        No tienes permisos para subir documentos.
+                      </p>
                     )}
                     <fieldset disabled={!canAddClinical || uploadingFile}>
                       <select
@@ -1458,6 +1486,9 @@ function ConfirmDialog({
   );
 }
 
+// ========================================
+// PASO 9: REEMPLAZAR completamente la función Calendar
+// ========================================
 function Calendar({ routines = [], events = [], onDayClick }) {
   const [today, setToday] = React.useState(new Date());
   const [currentMonth, setCurrentMonth] = React.useState(today.getMonth());
@@ -1512,8 +1543,8 @@ function Calendar({ routines = [], events = [], onDayClick }) {
       );
     });
 
-  const hasEvent = (day) =>
-    events.some((e) => {
+  const getEventIndicators = (day) => {
+    const dayEvents = events.filter((e) => {
       const date = new Date(e.ts || e.created_at);
       return (
         date.getDate() === day &&
@@ -1521,6 +1552,28 @@ function Calendar({ routines = [], events = [], onDayClick }) {
         date.getFullYear() === currentYear
       );
     });
+
+    if (dayEvents.length === 0) return null;
+
+    const hasHeatCycle = dayEvents.some(e => e.e_type_id === 'heat_cycle');
+
+    // Determinar si hay eventos médicos completados o pendientes
+    // Asumimos que si el evento tiene vaccine_event, clinic, o vet está "completado"
+    // De lo contrario, está pendiente
+    const medicalEvents = dayEvents.filter(e =>
+      ['medication_dose', 'routine_check', 'vaccine_administered'].includes(e.e_type_id)
+    );
+
+    const hasCompleted = medicalEvents.some(e =>
+      e.vaccine_event || e.clinic_id || e.vet_id
+    );
+
+    const hasPending = medicalEvents.some(e =>
+      !e.vaccine_event && !e.clinic_id && !e.vet_id
+    );
+
+    return { hasHeatCycle, hasPending, hasCompleted };
+  };
 
   const years = Array.from({ length: 11 }, (_, i) => today.getFullYear() - 5 + i);
 
@@ -1584,6 +1637,7 @@ function Calendar({ routines = [], events = [], onDayClick }) {
             currentYear === today.getFullYear();
 
           const dateObj = new Date(currentYear, currentMonth, day);
+          const eventInfo = getEventIndicators(day);
 
           return (
             <div
@@ -1599,36 +1653,190 @@ function Calendar({ routines = [], events = [], onDayClick }) {
                 {hasRoutine(day) && (
                   <span className="w-2 h-2 bg-blue-500 rounded-full"></span>
                 )}
-                {hasEvent(day) && (
-                  <span className="w-2 h-2 bg-green-500 rounded-full"></span>
+                {eventInfo && (
+                  <>
+                    {eventInfo.hasHeatCycle && (
+                      <span className="w-2 h-2 bg-pink-500 rounded-full"></span>
+                    )}
+                    {eventInfo.hasCompleted && (
+                      <span className="w-2 h-2 bg-green-500 rounded-full"></span>
+                    )}
+                    {eventInfo.hasPending && (
+                      <span className="w-2 h-2 bg-red-500 rounded-full"></span>
+                    )}
+                  </>
                 )}
               </div>
             </div>
           );
         })}
       </div>
+
+      {/* Leyenda */}
+      <div className="mt-4 flex flex-wrap justify-center gap-4 text-xs text-gray-600">
+        <div className="flex items-center gap-1">
+          <span className="w-2 h-2 bg-blue-500 rounded-full"></span>
+          <span>Rutina</span>
+        </div>
+        <div className="flex items-center gap-1">
+          <span className="w-2 h-2 bg-pink-500 rounded-full"></span>
+          <span>Ciclo de celo</span>
+        </div>
+        <div className="flex items-center gap-1">
+          <span className="w-2 h-2 bg-green-500 rounded-full"></span>
+          <span>Evento completado</span>
+        </div>
+        <div className="flex items-center gap-1">
+          <span className="w-2 h-2 bg-red-500 rounded-full"></span>
+          <span>Evento pendiente</span>
+        </div>
+      </div>
     </div>
   );
 }
 
+// ========================================
+// PASO 10: REEMPLAZAR completamente el componente EventModal
+// ========================================
 function EventModal({ open, date, events, onClose, petId, eventTypes, onEventAdded, canAdd }) {
-  const [newEvent, setNewEvent] = React.useState({
-    type_id: "",
-    details: "",
-    vaccine_next: "",
+  const [formData, setFormData] = React.useState({
+    e_type_id: "",
+    domicilio: "no",
+    region_id: "",
+    comuna_id: "",
+    clinic_id: "",
+    vet_id: "",
+    e_description: "",
+    vaccine_id: "",
+    next_due_date: "",
+    vaccine_batch: "",
+    vaccine_dose_number: "",
+    vaccine_expiration_date: "",
+    dose_mg: "",
   });
+
+  const [regions, setRegions] = React.useState([]);
+  const [comunas, setComunas] = React.useState([]);
+  const [clinics, setClinics] = React.useState([]);
+  const [vetsByClinic, setVetsByClinic] = React.useState([]);
+  const [vetsByComuna, setVetsByComuna] = React.useState([]);
+  const [vaccines, setVaccines] = React.useState([]);
+
   const [saving, setSaving] = React.useState(false);
   const [error, setError] = React.useState("");
   const [success, setSuccess] = React.useState("");
 
-  if (!open) return null;
+  // Cargar catálogos iniciales
+  React.useEffect(() => {
+    if (!open) return;
 
-  const formattedDate = date?.toLocaleDateString("es-CL", {
-    weekday: "long",
-    day: "numeric",
-    month: "long",
-    year: "numeric",
-  });
+    const loadInitialData = async () => {
+      // Cargar regiones
+      const { data: regionsData } = await supabase
+        .schema("petcare")
+        .from("region")
+        .select("region_id, name")
+        .order("name");
+      if (regionsData) setRegions(regionsData);
+
+      // Cargar vacunas si hay petId
+      if (petId) {
+        const { data: petData } = await supabase
+          .schema("petcare")
+          .from("pet")
+          .select("species_id")
+          .eq("pet_id", petId)
+          .maybeSingle();
+
+        if (petData?.species_id) {
+          const { data: vaccinesData } = await supabase
+            .schema("petcare")
+            .from("vaccine")
+            .select("vaccine_id, name")
+            .eq("species_id", petData.species_id)
+            .order("name");
+          if (vaccinesData) setVaccines(vaccinesData);
+        }
+      }
+    };
+
+    loadInitialData();
+  }, [open, petId]);
+
+  // Cascada Region -> Comuna
+  React.useEffect(() => {
+    if (!formData.region_id) {
+      setComunas([]);
+      setClinics([]);
+      setVetsByClinic([]);
+      setVetsByComuna([]);
+      return;
+    }
+
+    const loadComunas = async () => {
+      const { data } = await supabase
+        .schema("petcare")
+        .from("comuna")
+        .select("comuna_id, name")
+        .eq("region_id", formData.region_id)
+        .order("name");
+      if (data) setComunas(data);
+    };
+
+    loadComunas();
+    setFormData(p => ({ ...p, comuna_id: "", clinic_id: "", vet_id: "" }));
+  }, [formData.region_id]);
+
+  // Comuna -> Clínicas y Vets
+  React.useEffect(() => {
+    if (!formData.comuna_id) {
+      setClinics([]);
+      setVetsByClinic([]);
+      setVetsByComuna([]);
+      return;
+    }
+
+    const loadClinicsAndVets = async () => {
+      const { data: cData } = await supabase
+        .schema("petcare")
+        .from("clinic")
+        .select("clinic_id, name, address, phone")
+        .eq("comuna_id", formData.comuna_id)
+        .order("name");
+      if (cData) setClinics(cData);
+
+      const { data: vetsData } = await supabase
+        .schema("petcare")
+        .from("vet")
+        .select("vet_id, full_name, clinic_id")
+        .eq("comuna_id", formData.comuna_id)
+        .order("full_name");
+      if (vetsData) setVetsByComuna(vetsData);
+    };
+
+    loadClinicsAndVets();
+    setFormData(p => ({ ...p, clinic_id: "", vet_id: "" }));
+  }, [formData.comuna_id]);
+
+  // Clínica -> Veterinarios
+  React.useEffect(() => {
+    if (!formData.clinic_id) {
+      setVetsByClinic([]);
+      return;
+    }
+
+    const loadVetsByClinic = async () => {
+      const { data } = await supabase
+        .schema("petcare")
+        .from("vet")
+        .select("vet_id, full_name")
+        .eq("clinic_id", formData.clinic_id)
+        .order("full_name");
+      if (data) setVetsByClinic(data);
+    };
+
+    loadVetsByClinic();
+  }, [formData.clinic_id, clinics]);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -1642,63 +1850,109 @@ function EventModal({ open, date, events, onClose, petId, eventTypes, onEventAdd
       return;
     }
 
-    if (!newEvent.type_id) {
+    if (!formData.e_type_id) {
       setError("Debes seleccionar un tipo de evento.");
       setSaving(false);
       return;
     }
 
     try {
+      const { data: { user: authUser } } = await supabase.auth.getUser();
+      if (!authUser) throw new Error("No se pudo verificar la sesión");
+
+      const typeId = formData.e_type_id;
+      const domicilio = formData.domicilio === "si";
+
+      const eventData = {
+        pet_id: petId,
+        user_id: authUser.id,
+        e_type_id: typeId,
+        ts: new Date(date).toISOString(),
+      };
+
+      if (formData.e_description?.trim()) {
+        eventData.e_description = formData.e_description.trim();
+      }
+
+      // Campos específicos por tipo
+      if (["vaccine_administered", "medication_dose", "routine_check"].includes(typeId)) {
+        if (formData.comuna_id) eventData.comuna_id = parseInt(formData.comuna_id);
+        if (!domicilio && formData.clinic_id) eventData.clinic_id = formData.clinic_id;
+        if (formData.vet_id) eventData.vet_id = formData.vet_id;
+      }
+
+      if (typeId === "medication_dose" && formData.dose_mg) {
+        eventData.dose_mg = parseFloat(formData.dose_mg);
+      }
+
       const { data: inserted, error: insertError } = await supabase
         .schema("petcare")
         .from("event")
-        .insert([
-          {
-            pet_id: petId,
-            e_type_id: newEvent.type_id,
-            ts: new Date(date).toISOString(),
-            details: newEvent.details || null,
-          },
-        ])
+        .insert(eventData)
         .select("event_id")
-        .maybeSingle();
+        .single();
 
       if (insertError) throw insertError;
 
-      const selectedType = eventTypes.find(
-        (t) => t.event_type_id === newEvent.type_id
-      );
-      const isVaccine = selectedType?.display_name
-        ?.toLowerCase()
-        .includes("vacuna");
+      // Insertar vaccine_event si es vacuna
+      if (typeId === "vaccine_administered" && formData.vaccine_id) {
+        const vaccineEvent = {
+          event_id: inserted.event_id,
+          vaccine_id: parseInt(formData.vaccine_id),
+          next_due_date: formData.next_due_date || null,
+          vaccine_batch: formData.vaccine_batch || "",
+          vaccine_dose_number: formData.vaccine_dose_number ? parseInt(formData.vaccine_dose_number) : null,
+          vaccine_expiration_date: formData.vaccine_expiration_date || null,
+        };
 
-      if (isVaccine && newEvent.vaccine_next) {
         await supabase
           .schema("petcare")
           .from("vaccine_event")
-          .insert([
-            {
-              event_id: inserted.event_id,
-              next_due_date: newEvent.vaccine_next,
-            },
-          ]);
+          .insert(vaccineEvent);
       }
 
       setSuccess("Evento registrado exitosamente.");
-      setNewEvent({ type_id: "", details: "", vaccine_next: "" });
+      setFormData({
+        e_type_id: "",
+        domicilio: "no",
+        region_id: "",
+        comuna_id: "",
+        clinic_id: "",
+        vet_id: "",
+        e_description: "",
+        vaccine_id: "",
+        next_due_date: "",
+        vaccine_batch: "",
+        vaccine_dose_number: "",
+        vaccine_expiration_date: "",
+        dose_mg: "",
+      });
 
       onEventAdded();
     } catch (err) {
       console.error(err);
-      setError("Ocurrió un error al registrar el evento.");
+      setError(err.message || "Ocurrió un error al registrar el evento.");
     }
 
     setSaving(false);
   };
 
+  if (!open) return null;
+
+  const formattedDate = date?.toLocaleDateString("es-CL", {
+    weekday: "long",
+    day: "numeric",
+    month: "long",
+    year: "numeric",
+  });
+
+  const typeId = formData.e_type_id;
+  const domicilio = formData.domicilio === "si";
+  const needsGeoClinic = ["vaccine_administered", "medication_dose", "routine_check"].includes(typeId);
+
   return (
     <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50">
-      <div className="bg-white rounded-2xl shadow-xl w-full max-w-lg p-6 relative">
+      <div className="bg-white rounded-2xl shadow-xl w-full max-w-2xl p-6 relative max-h-[90vh] overflow-y-auto">
         <button
           onClick={onClose}
           className="absolute top-3 right-3 text-gray-500 hover:text-gray-800"
@@ -1710,10 +1964,11 @@ function EventModal({ open, date, events, onClose, petId, eventTypes, onEventAdd
           Eventos del {formattedDate}
         </h3>
 
+        {/* Lista de eventos existentes */}
         {events.length === 0 ? (
           <p className="text-gray-500 text-sm mt-4">No hay eventos registrados.</p>
         ) : (
-          <ul className="space-y-4 mt-4 max-h-80 overflow-y-auto pr-2">
+          <ul className="space-y-4 mt-4 max-h-60 overflow-y-auto pr-2 mb-6">
             {events.map((ev) => (
               <li key={ev.event_id} className="border rounded-xl p-4 bg-gray-50 text-left">
                 <p className="font-medium text-gray-800">
@@ -1726,25 +1981,32 @@ function EventModal({ open, date, events, onClose, petId, eventTypes, onEventAdd
                   })}
                 </p>
 
-                {ev.details && (
-                  <p className="text-sm text-gray-700 mt-1">
-                    {typeof ev.details === "object"
-                      ? JSON.stringify(ev.details)
-                      : ev.details}
-                  </p>
+                {ev.e_description && (
+                  <p className="text-sm text-gray-700 mt-1">{ev.e_description}</p>
                 )}
 
-                {ev.vaccine_event?.next_due_date && (
-                  <p className="text-xs text-green-600 mt-1">
-                    💉 Próxima dosis:{" "}
-                    {new Date(ev.vaccine_event.next_due_date).toLocaleDateString("es-CL")}
-                  </p>
+                {ev.dose_mg && <p className="text-sm text-gray-700">💊 Dosis: {ev.dose_mg} mg</p>}
+
+                {ev.clinic && (
+                  <div className="mt-2 text-xs text-gray-600">
+                    <p className="font-medium">🏥 {ev.clinic.name}</p>
+                    {ev.vet && <p>👨‍⚕️ {ev.vet.full_name}</p>}
+                  </div>
+                )}
+
+                {ev.vaccine_event && (
+                  <div className="mt-2 text-xs text-green-600">
+                    {ev.vaccine_event.next_due_date && (
+                      <p>💉 Próxima dosis: {new Date(ev.vaccine_event.next_due_date).toLocaleDateString("es-CL")}</p>
+                    )}
+                  </div>
                 )}
               </li>
             ))}
           </ul>
         )}
 
+        {/* Formulario para nuevo evento */}
         <form onSubmit={handleSubmit} className="mt-6 pt-4 border-t">
           <h4 className="text-sm font-medium mb-3">Registrar nuevo evento</h4>
 
@@ -1759,10 +2021,12 @@ function EventModal({ open, date, events, onClose, petId, eventTypes, onEventAdd
 
           <fieldset disabled={!canAdd} className={!canAdd ? "opacity-60 pointer-events-none" : ""}>
             <div className="space-y-3">
+              {/* Tipo de evento */}
               <select
-                value={newEvent.type_id}
-                onChange={(e) => setNewEvent({ ...newEvent, type_id: e.target.value })}
+                value={formData.e_type_id}
+                onChange={(e) => setFormData({ ...formData, e_type_id: e.target.value })}
                 className="w-full border rounded-lg px-3 py-2 text-sm"
+                required
               >
                 <option value="">Selecciona tipo de evento...</option>
                 {eventTypes.map((t) => (
@@ -1772,33 +2036,158 @@ function EventModal({ open, date, events, onClose, petId, eventTypes, onEventAdd
                 ))}
               </select>
 
+              {/* Campos geográficos y clínica para eventos médicos */}
+              {needsGeoClinic && (
+                <>
+                  <div>
+                    <label className="block text-xs font-medium mb-1">¿A domicilio?</label>
+                    <div className="flex gap-4">
+                      <label className="flex items-center gap-2 text-sm">
+                        <input
+                          type="radio"
+                          name="domicilio"
+                          value="si"
+                          checked={formData.domicilio === "si"}
+                          onChange={(e) => setFormData({ ...formData, domicilio: e.target.value })}
+                        />
+                        Sí
+                      </label>
+                      <label className="flex items-center gap-2 text-sm">
+                        <input
+                          type="radio"
+                          name="domicilio"
+                          value="no"
+                          checked={formData.domicilio === "no"}
+                          onChange={(e) => setFormData({ ...formData, domicilio: e.target.value })}
+                        />
+                        No
+                      </label>
+                    </div>
+                  </div>
+
+                  <select
+                    value={formData.region_id}
+                    onChange={(e) => setFormData({ ...formData, region_id: e.target.value })}
+                    className="w-full border rounded-lg px-3 py-2 text-sm"
+                  >
+                    <option value="">Región...</option>
+                    {regions.map((r) => (
+                      <option key={r.region_id} value={r.region_id}>{r.name}</option>
+                    ))}
+                  </select>
+
+                  <select
+                    value={formData.comuna_id}
+                    onChange={(e) => setFormData({ ...formData, comuna_id: e.target.value })}
+                    className="w-full border rounded-lg px-3 py-2 text-sm"
+                  >
+                    <option value="">Comuna...</option>
+                    {comunas.map((c) => (
+                      <option key={c.comuna_id} value={c.comuna_id}>{c.name}</option>
+                    ))}
+                  </select>
+
+                  {!domicilio && (
+                    <select
+                      value={formData.clinic_id}
+                      onChange={(e) => setFormData({ ...formData, clinic_id: e.target.value })}
+                      className="w-full border rounded-lg px-3 py-2 text-sm"
+                    >
+                      <option value="">Clínica...</option>
+                      {clinics.map((cl) => (
+                        <option key={cl.clinic_id} value={cl.clinic_id}>{cl.name}</option>
+                      ))}
+                    </select>
+                  )}
+
+                  <select
+                    value={formData.vet_id}
+                    onChange={(e) => setFormData({ ...formData, vet_id: e.target.value })}
+                    className="w-full border rounded-lg px-3 py-2 text-sm"
+                  >
+                    <option value="">Veterinario...</option>
+                    {(domicilio ? vetsByComuna : vetsByClinic).map((v) => (
+                      <option key={v.vet_id} value={v.vet_id}>{v.full_name}</option>
+                    ))}
+                  </select>
+                </>
+              )}
+
+              {/* Campos de vacuna */}
+              {typeId === "vaccine_administered" && (
+                <>
+                  <select
+                    value={formData.vaccine_id}
+                    onChange={(e) => setFormData({ ...formData, vaccine_id: e.target.value })}
+                    className="w-full border rounded-lg px-3 py-2 text-sm"
+                    required
+                  >
+                    <option value="">Vacuna...</option>
+                    {vaccines.map((v) => (
+                      <option key={v.vaccine_id} value={v.vaccine_id}>{v.name}</option>
+                    ))}
+                  </select>
+
+                  <input
+                    type="date"
+                    value={formData.next_due_date}
+                    onChange={(e) => setFormData({ ...formData, next_due_date: e.target.value })}
+                    placeholder="Próxima dosis"
+                    className="w-full border rounded-lg px-3 py-2 text-sm"
+                  />
+
+                  <input
+                    type="text"
+                    value={formData.vaccine_batch}
+                    onChange={(e) => setFormData({ ...formData, vaccine_batch: e.target.value })}
+                    placeholder="Lote de vacuna"
+                    className="w-full border rounded-lg px-3 py-2 text-sm"
+                    maxLength={25}
+                  />
+
+                  <input
+                    type="number"
+                    min="0"
+                    value={formData.vaccine_dose_number}
+                    onChange={(e) => setFormData({ ...formData, vaccine_dose_number: e.target.value })}
+                    placeholder="Número de dosis"
+                    className="w-full border rounded-lg px-3 py-2 text-sm"
+                  />
+
+                  <input
+                    type="date"
+                    value={formData.vaccine_expiration_date}
+                    onChange={(e) => setFormData({ ...formData, vaccine_expiration_date: e.target.value })}
+                    placeholder="Fecha de expiración"
+                    className="w-full border rounded-lg px-3 py-2 text-sm"
+                  />
+                </>
+              )}
+
+              {/* Campo de dosis para medicamentos */}
+              {typeId === "medication_dose" && (
+                <input
+                  type="number"
+                  step="0.1"
+                  min="0"
+                  value={formData.dose_mg}
+                  onChange={(e) => setFormData({ ...formData, dose_mg: e.target.value })}
+                  placeholder="Dosis (mg)"
+                  className="w-full border rounded-lg px-3 py-2 text-sm"
+                />
+              )}
+
+              {/* Descripción */}
               <textarea
-                value={newEvent.details}
-                onChange={(e) => setNewEvent({ ...newEvent, details: e.target.value })}
-                placeholder="Detalles del evento..."
+                value={formData.e_description}
+                onChange={(e) => setFormData({ ...formData, e_description: e.target.value.slice(0, 250) })}
+                placeholder="Descripción del evento (opcional, máx 250 caracteres)"
                 className="w-full border rounded-lg px-3 py-2 text-sm"
                 rows={3}
               />
-
-              {eventTypes.find(
-                (t) =>
-                  t.event_type_id === newEvent.type_id &&
-                  t.display_name.toLowerCase().includes("vacuna")
-              ) && (
-                  <div>
-                    <label className="block text-sm text-gray-700 mb-1">
-                      Próxima dosis (opcional)
-                    </label>
-                    <input
-                      type="date"
-                      value={newEvent.vaccine_next}
-                      onChange={(e) =>
-                        setNewEvent({ ...newEvent, vaccine_next: e.target.value })
-                      }
-                      className="w-full border rounded-lg px-3 py-2 text-sm"
-                    />
-                  </div>
-                )}
+              <div className="text-right text-xs text-gray-500">
+                {formData.e_description.length}/250
+              </div>
             </div>
 
             <div className="mt-4 flex justify-end gap-2">
