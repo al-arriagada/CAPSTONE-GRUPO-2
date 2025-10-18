@@ -1644,8 +1644,8 @@ function Calendar({ routines = [], events = [], onDayClick }) {
               key={i}
               onClick={() => onDayClick?.(dateObj)}
               className={`cursor-pointer h-14 flex flex-col items-center justify-center rounded-lg border relative transition ${isToday
-                  ? "bg-pink-500 text-white"
-                  : "bg-white text-gray-700 hover:bg-gray-100"
+                ? "bg-pink-500 text-white"
+                : "bg-white text-gray-700 hover:bg-gray-100"
                 }`}
             >
               <span>{day}</span>
@@ -2022,25 +2022,28 @@ function EventModal({ open, date, events, onClose, petId, eventTypes, onEventAdd
           <fieldset disabled={!canAdd} className={!canAdd ? "opacity-60 pointer-events-none" : ""}>
             <div className="space-y-3">
               {/* Tipo de evento */}
-              <select
-                value={formData.e_type_id}
-                onChange={(e) => setFormData({ ...formData, e_type_id: e.target.value })}
-                className="w-full border rounded-lg px-3 py-2 text-sm"
-                required
-              >
-                <option value="">Selecciona tipo de evento...</option>
-                {eventTypes.map((t) => (
-                  <option key={t.event_type_id} value={t.event_type_id}>
-                    {t.display_name}
-                  </option>
-                ))}
-              </select>
+              <div>
+                <label className="block text-xs font-medium text-gray-700 mb-1">Tipo de evento *</label>
+                <select
+                  value={formData.e_type_id}
+                  onChange={(e) => setFormData({ ...formData, e_type_id: e.target.value })}
+                  className="w-full border rounded-lg px-3 py-2 text-sm"
+                  required
+                >
+                  <option value="">Selecciona tipo de evento...</option>
+                  {eventTypes.map((t) => (
+                    <option key={t.event_type_id} value={t.event_type_id}>
+                      {t.display_name}
+                    </option>
+                  ))}
+                </select>
+              </div>
 
               {/* Campos geográficos y clínica para eventos médicos */}
               {needsGeoClinic && (
                 <>
                   <div>
-                    <label className="block text-xs font-medium mb-1">¿A domicilio?</label>
+                    <label className="block text-xs font-medium text-gray-700 mb-1">¿A domicilio?</label>
                     <div className="flex gap-4">
                       <label className="flex items-center gap-2 text-sm">
                         <input
@@ -2065,128 +2068,162 @@ function EventModal({ open, date, events, onClose, petId, eventTypes, onEventAdd
                     </div>
                   </div>
 
-                  <select
-                    value={formData.region_id}
-                    onChange={(e) => setFormData({ ...formData, region_id: e.target.value })}
-                    className="w-full border rounded-lg px-3 py-2 text-sm"
-                  >
-                    <option value="">Región...</option>
-                    {regions.map((r) => (
-                      <option key={r.region_id} value={r.region_id}>{r.name}</option>
-                    ))}
-                  </select>
-
-                  <select
-                    value={formData.comuna_id}
-                    onChange={(e) => setFormData({ ...formData, comuna_id: e.target.value })}
-                    className="w-full border rounded-lg px-3 py-2 text-sm"
-                  >
-                    <option value="">Comuna...</option>
-                    {comunas.map((c) => (
-                      <option key={c.comuna_id} value={c.comuna_id}>{c.name}</option>
-                    ))}
-                  </select>
-
-                  {!domicilio && (
+                  <div>
+                    <label className="block text-xs font-medium text-gray-700 mb-1">Región</label>
                     <select
-                      value={formData.clinic_id}
-                      onChange={(e) => setFormData({ ...formData, clinic_id: e.target.value })}
+                      value={formData.region_id}
+                      onChange={(e) => setFormData({ ...formData, region_id: e.target.value })}
                       className="w-full border rounded-lg px-3 py-2 text-sm"
                     >
-                      <option value="">Clínica...</option>
-                      {clinics.map((cl) => (
-                        <option key={cl.clinic_id} value={cl.clinic_id}>{cl.name}</option>
+                      <option value="">Seleccionar región...</option>
+                      {regions.map((r) => (
+                        <option key={r.region_id} value={r.region_id}>{r.name}</option>
                       ))}
                     </select>
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-medium text-gray-700 mb-1">Comuna</label>
+                    <select
+                      value={formData.comuna_id}
+                      onChange={(e) => setFormData({ ...formData, comuna_id: e.target.value })}
+                      className="w-full border rounded-lg px-3 py-2 text-sm"
+                      disabled={!formData.region_id}
+                    >
+                      <option value="">Seleccionar comuna...</option>
+                      {comunas.map((c) => (
+                        <option key={c.comuna_id} value={c.comuna_id}>{c.name}</option>
+                      ))}
+                    </select>
+                  </div>
+
+                  {!domicilio && (
+                    <div>
+                      <label className="block text-xs font-medium text-gray-700 mb-1">Clínica</label>
+                      <select
+                        value={formData.clinic_id}
+                        onChange={(e) => setFormData({ ...formData, clinic_id: e.target.value })}
+                        className="w-full border rounded-lg px-3 py-2 text-sm"
+                        disabled={!formData.comuna_id}
+                      >
+                        <option value="">Seleccionar clínica...</option>
+                        {clinics.map((cl) => (
+                          <option key={cl.clinic_id} value={cl.clinic_id}>{cl.name}</option>
+                        ))}
+                      </select>
+                    </div>
                   )}
 
-                  <select
-                    value={formData.vet_id}
-                    onChange={(e) => setFormData({ ...formData, vet_id: e.target.value })}
-                    className="w-full border rounded-lg px-3 py-2 text-sm"
-                  >
-                    <option value="">Veterinario...</option>
-                    {(domicilio ? vetsByComuna : vetsByClinic).map((v) => (
-                      <option key={v.vet_id} value={v.vet_id}>{v.full_name}</option>
-                    ))}
-                  </select>
+                  <div>
+                    <label className="block text-xs font-medium text-gray-700 mb-1">Veterinario</label>
+                    <select
+                      value={formData.vet_id}
+                      onChange={(e) => setFormData({ ...formData, vet_id: e.target.value })}
+                      className="w-full border rounded-lg px-3 py-2 text-sm"
+                      disabled={domicilio ? !formData.comuna_id : !formData.clinic_id}
+                    >
+                      <option value="">Seleccionar veterinario...</option>
+                      {(domicilio ? vetsByComuna : vetsByClinic).map((v) => (
+                        <option key={v.vet_id} value={v.vet_id}>{v.full_name}</option>
+                      ))}
+                    </select>
+                  </div>
                 </>
               )}
 
               {/* Campos de vacuna */}
               {typeId === "vaccine_administered" && (
                 <>
-                  <select
-                    value={formData.vaccine_id}
-                    onChange={(e) => setFormData({ ...formData, vaccine_id: e.target.value })}
-                    className="w-full border rounded-lg px-3 py-2 text-sm"
-                    required
-                  >
-                    <option value="">Vacuna...</option>
-                    {vaccines.map((v) => (
-                      <option key={v.vaccine_id} value={v.vaccine_id}>{v.name}</option>
-                    ))}
-                  </select>
+                  <div>
+                    <label className="block text-xs font-medium text-gray-700 mb-1">Nombre de la vacuna *</label>
+                    <select
+                      value={formData.vaccine_id}
+                      onChange={(e) => setFormData({ ...formData, vaccine_id: e.target.value })}
+                      className="w-full border rounded-lg px-3 py-2 text-sm"
+                      required
+                    >
+                      <option value="">Seleccionar vacuna...</option>
+                      {vaccines.map((v) => (
+                        <option key={v.vaccine_id} value={v.vaccine_id}>{v.name}</option>
+                      ))}
+                    </select>
+                  </div>
 
-                  <input
-                    type="date"
-                    value={formData.next_due_date}
-                    onChange={(e) => setFormData({ ...formData, next_due_date: e.target.value })}
-                    placeholder="Próxima dosis"
-                    className="w-full border rounded-lg px-3 py-2 text-sm"
-                  />
+                  <div>
+                    <label className="block text-xs font-medium text-gray-700 mb-1">Fecha de próxima dosis</label>
+                    <input
+                      type="date"
+                      value={formData.next_due_date}
+                      onChange={(e) => setFormData({ ...formData, next_due_date: e.target.value })}
+                      className="w-full border rounded-lg px-3 py-2 text-sm"
+                    />
+                  </div>
 
-                  <input
-                    type="text"
-                    value={formData.vaccine_batch}
-                    onChange={(e) => setFormData({ ...formData, vaccine_batch: e.target.value })}
-                    placeholder="Lote de vacuna"
-                    className="w-full border rounded-lg px-3 py-2 text-sm"
-                    maxLength={25}
-                  />
+                  <div>
+                    <label className="block text-xs font-medium text-gray-700 mb-1">Lote de la vacuna</label>
+                    <input
+                      type="text"
+                      value={formData.vaccine_batch}
+                      onChange={(e) => setFormData({ ...formData, vaccine_batch: e.target.value })}
+                      placeholder="Ej: LOT123456"
+                      className="w-full border rounded-lg px-3 py-2 text-sm"
+                      maxLength={25}
+                    />
+                  </div>
 
-                  <input
-                    type="number"
-                    min="0"
-                    value={formData.vaccine_dose_number}
-                    onChange={(e) => setFormData({ ...formData, vaccine_dose_number: e.target.value })}
-                    placeholder="Número de dosis"
-                    className="w-full border rounded-lg px-3 py-2 text-sm"
-                  />
+                  <div>
+                    <label className="block text-xs font-medium text-gray-700 mb-1">Número de dosis</label>
+                    <input
+                      type="number"
+                      min="0"
+                      value={formData.vaccine_dose_number}
+                      onChange={(e) => setFormData({ ...formData, vaccine_dose_number: e.target.value })}
+                      placeholder="Ej: 1, 2, 3..."
+                      className="w-full border rounded-lg px-3 py-2 text-sm"
+                    />
+                  </div>
 
-                  <input
-                    type="date"
-                    value={formData.vaccine_expiration_date}
-                    onChange={(e) => setFormData({ ...formData, vaccine_expiration_date: e.target.value })}
-                    placeholder="Fecha de expiración"
-                    className="w-full border rounded-lg px-3 py-2 text-sm"
-                  />
+                  <div>
+                    <label className="block text-xs font-medium text-gray-700 mb-1">Fecha de vencimiento de la vacuna</label>
+                    <input
+                      type="date"
+                      value={formData.vaccine_expiration_date}
+                      onChange={(e) => setFormData({ ...formData, vaccine_expiration_date: e.target.value })}
+                      className="w-full border rounded-lg px-3 py-2 text-sm"
+                    />
+                  </div>
                 </>
               )}
 
               {/* Campo de dosis para medicamentos */}
               {typeId === "medication_dose" && (
-                <input
-                  type="number"
-                  step="0.1"
-                  min="0"
-                  value={formData.dose_mg}
-                  onChange={(e) => setFormData({ ...formData, dose_mg: e.target.value })}
-                  placeholder="Dosis (mg)"
-                  className="w-full border rounded-lg px-3 py-2 text-sm"
-                />
+                <div>
+                  <label className="block text-xs font-medium text-gray-700 mb-1">Dosis administrada (mg)</label>
+                  <input
+                    type="number"
+                    step="0.1"
+                    min="0"
+                    value={formData.dose_mg}
+                    onChange={(e) => setFormData({ ...formData, dose_mg: e.target.value })}
+                    placeholder="Ej: 50"
+                    className="w-full border rounded-lg px-3 py-2 text-sm"
+                  />
+                </div>
               )}
 
               {/* Descripción */}
-              <textarea
-                value={formData.e_description}
-                onChange={(e) => setFormData({ ...formData, e_description: e.target.value.slice(0, 250) })}
-                placeholder="Descripción del evento (opcional, máx 250 caracteres)"
-                className="w-full border rounded-lg px-3 py-2 text-sm"
-                rows={3}
-              />
-              <div className="text-right text-xs text-gray-500">
-                {formData.e_description.length}/250
+              <div>
+                <label className="block text-xs font-medium text-gray-700 mb-1">Descripción (opcional)</label>
+                <textarea
+                  value={formData.e_description}
+                  onChange={(e) => setFormData({ ...formData, e_description: e.target.value.slice(0, 250) })}
+                  placeholder="Agrega notas o detalles adicionales sobre este evento..."
+                  className="w-full border rounded-lg px-3 py-2 text-sm"
+                  rows={3}
+                />
+                <div className="text-right text-xs text-gray-500">
+                  {formData.e_description.length}/250 caracteres
+                </div>
               </div>
             </div>
 
