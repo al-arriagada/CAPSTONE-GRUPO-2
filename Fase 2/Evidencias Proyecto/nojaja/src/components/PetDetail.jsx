@@ -1557,20 +1557,15 @@ function Calendar({ routines = [], events = [], onDayClick }) {
 
     const hasHeatCycle = dayEvents.some(e => e.e_type_id === 'heat_cycle');
 
-    // Determinar si hay eventos médicos completados o pendientes
-    // Asumimos que si el evento tiene vaccine_event, clinic, o vet está "completado"
-    // De lo contrario, está pendiente
     const medicalEvents = dayEvents.filter(e =>
       ['medication_dose', 'routine_check', 'vaccine_administered'].includes(e.e_type_id)
     );
 
-    const hasCompleted = medicalEvents.some(e =>
-      e.vaccine_event || e.clinic_id || e.vet_id
-    );
-
-    const hasPending = medicalEvents.some(e =>
-      !e.vaccine_event && !e.clinic_id && !e.vet_id
-    );
+    // Evento futuro = fecha en el futuro (rojo)
+    // Evento realizado = fecha en el pasado o hoy (verde)
+    const now = new Date();
+    const hasCompleted = medicalEvents.some(e => new Date(e.ts) <= now);
+    const hasPending = medicalEvents.some(e => new Date(e.ts) > now);
 
     return { hasHeatCycle, hasPending, hasCompleted };
   };
@@ -1971,13 +1966,24 @@ function EventModal({ open, date, events, onClose, petId, eventTypes, onEventAdd
           <ul className="space-y-4 mt-4 max-h-60 overflow-y-auto pr-2 mb-6">
             {events.map((ev) => (
               <li key={ev.event_id} className="border rounded-xl p-4 bg-gray-50 text-left">
-                <p className="font-medium text-gray-800">
-                  {ev.event_type_catalog?.display_name || "Evento sin tipo"}
-                </p>
+                <div className="flex items-center gap-2 mb-1">
+                  <p className="font-medium text-gray-800">
+                    {ev.event_type_catalog?.display_name || "Evento sin tipo"}
+                  </p>
+                  {new Date(ev.ts) > new Date() ? (
+                    <span className="px-2 py-0.5 text-xs rounded-full bg-red-100 text-red-700">Programado</span>
+                  ) : (
+                    <span className="px-2 py-0.5 text-xs rounded-full bg-green-100 text-green-700">Realizado</span>
+                  )}
+                </div>
                 <p className="text-sm text-gray-600">
-                  {new Date(ev.ts).toLocaleTimeString("es-CL", {
+                  {new Date(ev.ts).toLocaleDateString("es-CL", {
+                    day: "numeric",
+                    month: "long",
+                    year: "numeric"
+                  })}, {new Date(ev.ts).toLocaleTimeString("es-CL", {
                     hour: "2-digit",
-                    minute: "2-digit",
+                    minute: "2-digit"
                   })}
                 </p>
 
@@ -2197,17 +2203,49 @@ function EventModal({ open, date, events, onClose, petId, eventTypes, onEventAdd
 
               {/* Campo de dosis para medicamentos */}
               {typeId === "medication_dose" && (
+                <>
+                  <div>
+                    <label className="block text-xs font-medium text-gray-700 mb-1">Dosis administrada (mg)</label>
+                    <input
+                      type="number"
+                      step="0.1"
+                      min="0"
+                      value={formData.dose_mg}
+                      onChange={(e) => setFormData({ ...formData, dose_mg: e.target.value })}
+                      placeholder="Ej: 50"
+                      className="w-full border rounded-lg px-3 py-2 text-sm"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-medium text-gray-700 mb-1">Próxima dosis (fecha y hora)</label>
+                    <input
+                      type="datetime-local"
+                      value={formData.next_dose_datetime}
+                      onChange={(e) => setFormData({ ...formData, next_dose_datetime: e.target.value })}
+                      className="w-full border rounded-lg px-3 py-2 text-sm"
+                      min={formData.event_datetime}
+                    />
+                    <p className="text-xs text-gray-500 mt-1">
+                      Opcional. Se creará un evento futuro si se completa.
+                    </p>
+                  </div>
+                </>
+              )}
+
+              {/* AQUÍ VA EL PASO 2G ⬇️ */}
+              {typeId === "routine_check" && (
                 <div>
-                  <label className="block text-xs font-medium text-gray-700 mb-1">Dosis administrada (mg)</label>
+                  <label className="block text-xs font-medium text-gray-700 mb-1">Próximo control (fecha y hora)</label>
                   <input
-                    type="number"
-                    step="0.1"
-                    min="0"
-                    value={formData.dose_mg}
-                    onChange={(e) => setFormData({ ...formData, dose_mg: e.target.value })}
-                    placeholder="Ej: 50"
+                    type="datetime-local"
+                    value={formData.next_dose_datetime}
+                    onChange={(e) => setFormData({ ...formData, next_dose_datetime: e.target.value })}
                     className="w-full border rounded-lg px-3 py-2 text-sm"
+                    min={formData.event_datetime}
                   />
+                  <p className="text-xs text-gray-500 mt-1">
+                    Opcional. Se creará un evento futuro si se completa.
+                  </p>
                 </div>
               )}
 

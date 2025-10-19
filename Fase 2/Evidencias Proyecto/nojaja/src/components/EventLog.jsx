@@ -28,6 +28,7 @@ export default function EventLog({ petId: propPetId }) {
 
   const [formData, setFormData] = useState({
     e_type_id: "",
+    event_datetime: "", // ← NUEVO: para datetime-local
     domicilio: "no",
     region_id: "",
     comuna_id: "",
@@ -39,13 +40,35 @@ export default function EventLog({ petId: propPetId }) {
     distance_m: "",
     vaccine_id: "",
     next_due_date: "",
+    next_dose_datetime: "", // ← NUEVO: para próxima dosis/control
     vaccine_batch: "",
     vaccine_dose_number: "",
     vaccine_expiration_date: "",
+    dose_mg: "",
     clinic_name: "",
     clinic_address: "",
     clinic_phone: "",
   });
+
+  const convertToISO = (datetimeLocal) => {
+    if (!datetimeLocal) return new Date().toISOString();
+    return new Date(datetimeLocal).toISOString();
+  };
+
+  const formatEventDateTime = (isoString) => {
+    if (!isoString) return "—";
+    const date = new Date(isoString);
+    const dateStr = date.toLocaleDateString("es-ES", {
+      day: "numeric",
+      month: "long",
+      year: "numeric"
+    });
+    const timeStr = date.toLocaleTimeString("es-ES", {
+      hour: "2-digit",
+      minute: "2-digit"
+    });
+    return `${dateStr}, ${timeStr}`;
+  };
 
   const todayISO = () => new Date().toISOString().slice(0, 10);
 
@@ -93,10 +116,10 @@ export default function EventLog({ petId: propPetId }) {
           .select("species_id")
           .eq("pet_id", petId)
           .maybeSingle();
-        
+
         if (petData) {
           setPetSpeciesId(petData.species_id);
-          
+
           // Cargar vacunas por especie
           const { data: vaccinesData } = await supabase
             .schema("petcare")
@@ -123,7 +146,7 @@ export default function EventLog({ petId: propPetId }) {
       setLoading(false);
       return;
     }
-    
+
     setLoading(true);
     try {
       const { data: eventsData, error: eventsError } = await supabase
@@ -218,7 +241,7 @@ export default function EventLog({ petId: propPetId }) {
           .select("comuna_id, name")
           .eq("region_id", formData.region_id)
           .order("name");
-        
+
         if (!error && data) {
           setComunas(data);
         }
@@ -228,7 +251,7 @@ export default function EventLog({ petId: propPetId }) {
     };
 
     loadComunas();
-    
+
     // Limpiar selecciones dependientes
     setFormData((p) => ({
       ...p,
@@ -259,7 +282,7 @@ export default function EventLog({ petId: propPetId }) {
           .select("clinic_id, name, address, phone")
           .eq("comuna_id", formData.comuna_id)
           .order("name");
-        
+
         if (cData) setClinics(cData);
 
         // Cargar vets por comuna (ahora vet tiene comuna_id directamente)
@@ -269,7 +292,7 @@ export default function EventLog({ petId: propPetId }) {
           .select("vet_id, full_name, clinic_id, user_id")
           .eq("comuna_id", formData.comuna_id)
           .order("full_name");
-        
+
         if (vetsError) {
           console.error("Error loading vets by comuna:", vetsError);
           setVetsByComuna([]);
@@ -282,15 +305,15 @@ export default function EventLog({ petId: propPetId }) {
     };
 
     loadClinicsAndVets();
-    
+
     // Limpiar selecciones dependientes
-    setFormData((p) => ({ 
-      ...p, 
-      clinic_id: "", 
-      vet_id: "", 
-      clinic_name: "", 
-      clinic_address: "", 
-      clinic_phone: "" 
+    setFormData((p) => ({
+      ...p,
+      clinic_id: "",
+      vet_id: "",
+      clinic_name: "",
+      clinic_address: "",
+      clinic_phone: ""
     }));
   }, [formData.comuna_id, user]);
 
@@ -298,11 +321,11 @@ export default function EventLog({ petId: propPetId }) {
   useEffect(() => {
     if (!user || !formData.clinic_id) {
       setVetsByClinic([]);
-      setFormData((p) => ({ 
-        ...p, 
-        clinic_name: "", 
-        clinic_address: "", 
-        clinic_phone: "" 
+      setFormData((p) => ({
+        ...p,
+        clinic_name: "",
+        clinic_address: "",
+        clinic_phone: ""
       }));
       return;
     }
@@ -327,7 +350,7 @@ export default function EventLog({ petId: propPetId }) {
           .select("vet_id, full_name")
           .eq("clinic_id", formData.clinic_id)
           .order("full_name");
-        
+
         if (data) setVetsByClinic(data);
       } catch (err) {
         console.error("Error loading vets by clinic:", err);
@@ -346,13 +369,6 @@ export default function EventLog({ petId: propPetId }) {
       return;
     }
 
-    // DEBUG: Ver estructura del user
-    console.log("=== USER DEBUG ===");
-    console.log("User completo:", user);
-    console.log("user.id:", user.id);
-    console.log("user.user_id:", user.user_id);
-    console.log("==================");
-
     if (!formData.e_type_id) {
       setError("Selecciona un tipo de evento");
       return;
@@ -361,26 +377,38 @@ export default function EventLog({ petId: propPetId }) {
     const typeId = formData.e_type_id;
     const domicilio = formData.domicilio === "si";
 
+    // Validar fecha para eventos que requieren datetime
+    const needsDateTime = ["incident_reported", "medication_dose", "routine_check", "vaccine_administered"].includes(typeId);
+    if (needsDateTime && !formData.event_datetime) {
+      setError("Debes ingresar la fecha y hora del evento");
+      return;
+    }
+
+    // Validar próxima dosis/control si se ingresó
+    if (formData.next_dose_datetime) {
+      const eventDate = new Date(formData.event_datetime || new Date());
+      const nextDate = new Date(formData.next_dose_datetime);
+      if (nextDate <= eventDate) {
+        setError("La fecha de próxima dosis/control debe ser posterior a la fecha del evento");
+        return;
+      }
+    }
+
     try {
       setSaving(true);
 
-      // Obtener user_id directamente de Supabase Auth
       const { data: { user: authUser }, error: authError } = await supabase.auth.getUser();
-      
       if (authError || !authUser) {
         throw new Error("No se pudo verificar la sesión del usuario");
       }
 
-      console.log("Auth user ID:", authUser.id);
-
+      // Crear evento principal
       const eventData = {
         pet_id: petId,
-        user_id: authUser.id, // ID directo del usuario autenticado
+        user_id: authUser.id,
         e_type_id: typeId,
-        ts: new Date().toISOString(),
+        ts: needsDateTime ? convertToISO(formData.event_datetime) : new Date().toISOString(),
       };
-
-      console.log("Event data ANTES de agregar campos opcionales:", JSON.stringify(eventData, null, 2));
 
       if (formData.e_description?.trim()) {
         eventData.e_description = formData.e_description.trim();
@@ -388,20 +416,12 @@ export default function EventLog({ petId: propPetId }) {
 
       if (["vaccine_administered", "medication_dose", "routine_check"].includes(typeId)) {
         if (formData.comuna_id) eventData.comuna_id = parseInt(formData.comuna_id);
-
-        if (!domicilio) {
-          if (formData.clinic_id) {
-            eventData.clinic_id = formData.clinic_id;
-            // NO guardar details si hay clinic_id (la info está en la relación)
-          }
-          if (formData.vet_id) eventData.vet_id = formData.vet_id;
-        } else {
-          if (formData.vet_id) eventData.vet_id = formData.vet_id;
-        }
+        if (!domicilio && formData.clinic_id) eventData.clinic_id = formData.clinic_id;
+        if (formData.vet_id) eventData.vet_id = formData.vet_id;
       }
 
-      if (typeId === "medication_dose") {
-        if (formData.dose_mg) eventData.dose_mg = parseFloat(formData.dose_mg);
+      if (typeId === "medication_dose" && formData.dose_mg) {
+        eventData.dose_mg = parseFloat(formData.dose_mg);
       }
 
       if (typeId === "weight_logged") {
@@ -410,10 +430,9 @@ export default function EventLog({ petId: propPetId }) {
         if (isNaN(val) || val <= 0 || val >= 100) {
           throw new Error("El peso debe ser un número válido entre 0 y 100 kg");
         }
-        // Guardar en var_weight como JSONB
-        eventData.var_weight = { 
-          value: val, 
-          date: todayISO() 
+        eventData.var_weight = {
+          value: val,
+          date: new Date().toISOString().slice(0, 10)
         };
       }
 
@@ -422,8 +441,6 @@ export default function EventLog({ petId: propPetId }) {
         if (formData.distance_m) eventData.distance_m = parseInt(formData.distance_m);
       }
 
-      console.log("Event data FINAL antes de INSERT:", JSON.stringify(eventData, null, 2));
-
       const { data: inserted, error: insertErr } = await supabase
         .schema("petcare")
         .from("event")
@@ -431,25 +448,19 @@ export default function EventLog({ petId: propPetId }) {
         .select("event_id")
         .single();
 
-      if (insertErr) {
-        console.error("Error inserting event:", insertErr);
-        console.error("Event data sent:", eventData);
-        throw new Error(insertErr.message || "Error al insertar evento");
-      }
-      
-      if (!inserted) {
-        throw new Error("No se recibió el evento creado");
-      }
-      
+      if (insertErr) throw new Error(insertErr.message || "Error al insertar evento");
+      if (!inserted) throw new Error("No se recibió el evento creado");
+
       const newEventId = inserted.event_id;
 
+      // Manejo de vaccine_event
       if (typeId === "vaccine_administered") {
         if (!formData.vaccine_id) throw new Error("Seleccione la vacuna aplicada");
 
         const vaccineEvent = {
           event_id: newEventId,
           vaccine_id: parseInt(formData.vaccine_id),
-          next_due_date: formData.next_due_date || null,
+          next_due_date: formData.next_dose_datetime ? new Date(formData.next_dose_datetime).toISOString().slice(0, 10) : null,
           vaccine_batch: formData.vaccine_batch || "",
           vaccine_dose_number: formData.vaccine_dose_number ? parseInt(formData.vaccine_dose_number) : null,
           vaccine_expiration_date: formData.vaccine_expiration_date || null,
@@ -462,8 +473,49 @@ export default function EventLog({ petId: propPetId }) {
         if (veErr) throw veErr;
       }
 
+      // Crear evento futuro si se ingresó próxima dosis/control
+      if (formData.next_dose_datetime && ["medication_dose", "routine_check", "vaccine_administered"].includes(typeId)) {
+        const futureEventData = {
+          pet_id: petId,
+          user_id: authUser.id,
+          e_type_id: typeId,
+          ts: convertToISO(formData.next_dose_datetime),
+        };
+
+        // Copiar datos geográficos y clínica
+        if (formData.comuna_id) futureEventData.comuna_id = parseInt(formData.comuna_id);
+        if (!domicilio && formData.clinic_id) futureEventData.clinic_id = formData.clinic_id;
+        if (formData.vet_id) futureEventData.vet_id = formData.vet_id;
+
+        const { data: futureInserted, error: futureErr } = await supabase
+          .schema("petcare")
+          .from("event")
+          .insert(futureEventData)
+          .select("event_id")
+          .single();
+
+        if (futureErr) console.error("Error creando evento futuro:", futureErr);
+
+        // Si es vacuna, crear vaccine_event para el futuro (vacío)
+        if (typeId === "vaccine_administered" && futureInserted) {
+          await supabase
+            .schema("petcare")
+            .from("vaccine_event")
+            .insert({
+              event_id: futureInserted.event_id,
+              vaccine_id: parseInt(formData.vaccine_id),
+              next_due_date: null,
+              vaccine_batch: "",
+              vaccine_dose_number: null,
+              vaccine_expiration_date: null,
+            });
+        }
+      }
+
+      // Resetear formulario
       setFormData({
         e_type_id: "",
+        event_datetime: "",
         domicilio: "no",
         region_id: "",
         comuna_id: "",
@@ -475,9 +527,11 @@ export default function EventLog({ petId: propPetId }) {
         distance_m: "",
         vaccine_id: "",
         next_due_date: "",
+        next_dose_datetime: "",
         vaccine_batch: "",
         vaccine_dose_number: "",
         vaccine_expiration_date: "",
+        dose_mg: "",
         clinic_name: "",
         clinic_address: "",
         clinic_phone: "",
@@ -485,13 +539,7 @@ export default function EventLog({ petId: propPetId }) {
       setShowForm(false);
       await loadEvents();
     } catch (err) {
-      console.error("=== ERROR COMPLETO ===");
-      console.error("Error object:", err);
-      console.error("Error message:", err.message);
-      console.error("Error code:", err.code);
-      console.error("Error details:", err.details);
-      console.error("Error hint:", err.hint);
-      console.error("=====================");
+      console.error("=== ERROR COMPLETO ===", err);
       setError(err.message || "Error al guardar el evento");
     } finally {
       setSaving(false);
@@ -500,14 +548,14 @@ export default function EventLog({ petId: propPetId }) {
 
   const handleDelete = async (eventId) => {
     if (!confirm("¿Eliminar este registro?")) return;
-    
+
     try {
       const { error } = await supabase
         .schema("petcare")
         .from("event")
         .delete()
         .eq("event_id", eventId);
-      
+
       if (error) {
         alert(`Error al eliminar: ${error.message}`);
         return;
@@ -658,16 +706,6 @@ export default function EventLog({ petId: propPetId }) {
         </div>
 
         <div>
-          <label className="block text-sm font-medium mb-2">Próxima dosis</label>
-          <input
-            type="date"
-            value={formData.next_due_date}
-            onChange={(e) => setFormData({ ...formData, next_due_date: e.target.value })}
-            className="w-full px-3 py-2 border rounded-lg"
-          />
-        </div>
-
-        <div>
           <label className="block text-sm font-medium mb-2">Lote de vacuna</label>
           <input
             type="text"
@@ -692,13 +730,27 @@ export default function EventLog({ petId: propPetId }) {
         </div>
 
         <div>
-          <label className="block text-sm font-medium mb-2">Fecha de expiración</label>
+          <label className="block text-sm font-medium mb-2">Fecha de vencimiento</label>
           <input
             type="date"
             value={formData.vaccine_expiration_date}
             onChange={(e) => setFormData({ ...formData, vaccine_expiration_date: e.target.value })}
             className="w-full px-3 py-2 border rounded-lg"
           />
+        </div>
+
+        <div className="md:col-span-2">
+          <label className="block text-sm font-medium mb-2">Próxima dosis (fecha y hora)</label>
+          <input
+            type="datetime-local"
+            value={formData.next_dose_datetime}
+            onChange={(e) => setFormData({ ...formData, next_dose_datetime: e.target.value })}
+            className="w-full px-3 py-2 border rounded-lg"
+            min={formData.event_datetime}
+          />
+          <p className="text-xs text-gray-500 mt-1">
+            Opcional. Se creará un evento futuro si se completa.
+          </p>
         </div>
       </>
     );
@@ -707,17 +759,51 @@ export default function EventLog({ petId: propPetId }) {
   const renderMedicationBlock = (typeId) => {
     if (typeId !== "medication_dose") return null;
     return (
-      <div>
-        <label className="block text-sm font-medium mb-2">Dosis (mg)</label>
+      <>
+        <div>
+          <label className="block text-sm font-medium mb-2">Dosis (mg)</label>
+          <input
+            type="number"
+            step="0.1"
+            min="0"
+            value={formData.dose_mg || ""}
+            onChange={(e) => setFormData({ ...formData, dose_mg: e.target.value })}
+            className="w-full px-3 py-2 border rounded-lg"
+            placeholder="Ej: 50"
+          />
+        </div>
+        <div>
+          <label className="block text-sm font-medium mb-2">Próxima dosis (fecha y hora)</label>
+          <input
+            type="datetime-local"
+            value={formData.next_dose_datetime}
+            onChange={(e) => setFormData({ ...formData, next_dose_datetime: e.target.value })}
+            className="w-full px-3 py-2 border rounded-lg"
+            min={formData.event_datetime}
+          />
+          <p className="text-xs text-gray-500 mt-1">
+            Opcional. Si se completa, se creará automáticamente un evento futuro.
+          </p>
+        </div>
+      </>
+    );
+  };
+
+  const renderRoutineCheckBlock = (typeId) => {
+    if (typeId !== "routine_check") return null;
+    return (
+      <div className="md:col-span-2">
+        <label className="block text-sm font-medium mb-2">Próximo control (fecha y hora)</label>
         <input
-          type="number"
-          step="0.1"
-          min="0"
-          value={formData.dose_mg || ""}
-          onChange={(e) => setFormData({ ...formData, dose_mg: e.target.value })}
+          type="datetime-local"
+          value={formData.next_dose_datetime}
+          onChange={(e) => setFormData({ ...formData, next_dose_datetime: e.target.value })}
           className="w-full px-3 py-2 border rounded-lg"
-          placeholder="Ej: 50"
+          min={formData.event_datetime}
         />
+        <p className="text-xs text-gray-500 mt-1">
+          Opcional. Si se completa, se creará automáticamente un evento futuro para el próximo control.
+        </p>
       </div>
     );
   };
@@ -830,27 +916,40 @@ export default function EventLog({ petId: propPetId }) {
                   <option key={t.event_type_id} value={t.event_type_id}>{t.display_name}</option>
                 ))}
               </select>
+              {["incident_reported", "medication_dose", "routine_check", "vaccine_administered"].includes(formData.e_type_id) && (
+                <div className="md:col-span-2">
+                  <label className="block text-sm font-medium mb-2">Fecha y hora del evento *</label>
+                  <input
+                    type="datetime-local"
+                    value={formData.event_datetime}
+                    onChange={(e) => setFormData({ ...formData, event_datetime: e.target.value })}
+                    className="w-full px-3 py-2 border rounded-lg"
+                    required
+                  />
+                </div>
+              )}
             </div>
 
             {renderGeoClinicVetBlock(formData.e_type_id)}
             {renderVaccineBlock(formData.e_type_id)}
             {renderMedicationBlock(formData.e_type_id)}
+            {renderRoutineCheckBlock(formData.e_type_id)}
             {renderWeightBlock(formData.e_type_id)}
             {renderWalkBlock(formData.e_type_id)}
             {renderDescription()}
           </div>
 
           <div className="mt-4 flex justify-end gap-2">
-            <button 
-              type="button" 
-              onClick={() => setShowForm(false)} 
+            <button
+              type="button"
+              onClick={() => setShowForm(false)}
               className="px-4 py-2 border rounded-lg hover:bg-gray-50"
             >
               Cancelar
             </button>
-            <button 
-              type="submit" 
-              disabled={saving} 
+            <button
+              type="submit"
+              disabled={saving}
               className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 disabled:opacity-50"
             >
               {saving ? "Guardando..." : "Guardar Evento"}
@@ -869,16 +968,17 @@ export default function EventLog({ petId: propPetId }) {
                 <div className="flex-1">
                   <div className="flex items-center gap-3 mb-2">
                     <span className="text-2xl">{getEventIcon(event.e_type_id)}</span>
-                    <div>
-                      <h4 className="font-semibold">{event.event_type_catalog?.display_name || event.e_type_id}</h4>
+                    <div className="flex-1">
+                      <div className="flex items-center gap-2">
+                        <h4 className="font-semibold">{event.event_type_catalog?.display_name || event.e_type_id}</h4>
+                        {new Date(event.ts) > new Date() ? (
+                          <span className="px-2 py-0.5 text-xs rounded-full bg-red-100 text-red-700">Programado</span>
+                        ) : (
+                          <span className="px-2 py-0.5 text-xs rounded-full bg-green-100 text-green-700">Realizado</span>
+                        )}
+                      </div>
                       <p className="text-sm text-gray-500">
-                        {new Date(event.ts).toLocaleDateString("es-ES", { 
-                          day: "2-digit", 
-                          month: "long", 
-                          year: "numeric", 
-                          hour: "2-digit", 
-                          minute: "2-digit" 
-                        })}
+                        {formatEventDateTime(event.ts)}
                       </p>
                     </div>
                   </div>
@@ -923,8 +1023,8 @@ export default function EventLog({ petId: propPetId }) {
                   </div>
                 </div>
 
-                <button 
-                  onClick={() => handleDelete(event.event_id)} 
+                <button
+                  onClick={() => handleDelete(event.event_id)}
                   className="ml-4 text-red-600 hover:text-red-800 text-sm"
                 >
                   Eliminar
