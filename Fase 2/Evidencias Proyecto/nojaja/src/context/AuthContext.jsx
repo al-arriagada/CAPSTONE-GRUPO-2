@@ -2,90 +2,77 @@
 import React, { createContext, useContext, useEffect, useRef, useState } from "react";
 import { supabase } from "../supabaseClient";
 import { ensureProfileOnAuth } from "../services/profile";
-import { registerPush, unregisterPush } from "../notifications/registerPush.ts"; // ⬅️ nuevo
+// --- Eliminado import de registerPush y unregisterPush ---
 
 const AuthContext = createContext(null);
 
 export const AuthProvider = ({ children }) => {
   const [user, setUser] = useState(null);
-  const [loading, setLoading] = useState(true);
+  const [loadingSession, setLoadingSession] = useState(true);
 
-  // Evita re-ejecutar ensureProfile y registro de push
+  // Guard para no repetir ensureProfile por sesión
   const lastEnsuredRef = useRef(null);
-  const didRegisterPushRef = useRef(false);
-  const lastUserIdRef = useRef(null);
+  // --- Eliminadas refs de push (didRegisterPushRef, lastUserIdRef) ---
 
-  // helper: registra push una sola vez por sesión
-  const maybeRegisterPush = async (u) => {
-    if (!u) return;
-    lastUserIdRef.current = u.id;
-    if (!didRegisterPushRef.current) {
-      try { await registerPush(u.id); } catch (e) { console.warn("registerPush:", e); }
-      didRegisterPushRef.current = true;
-    }
-  };
+  // --- Eliminada la función 'maybeRegisterPush' ---
 
   useEffect(() => {
     let cancelled = false;
 
-    // ⬇️ Failsafe: si algo se traba, suelta el loading en 2s
-    const failsafe = setTimeout(() => {
-      if (!cancelled) setLoading(false);
-    }, 2000);
-
-    // 1) Cargar sesión actual — NO bloquear la UI
+    // 1) Cargar sesión actual
     (async () => {
       try {
         const { data, error } = await supabase.auth.getSession();
-        if (error) console.warn("getSession:", error);
+        if (error) console.warn("[auth] getSession:", error);
         if (!cancelled) {
           const u = data?.session?.user ?? null;
           setUser(u);
-          // si ya estaba logueado al cargar, registra push una vez
-          if (u) { maybeRegisterPush(u); }
         }
+      } catch (e) {
+        console.warn("[auth] getSession threw:", e?.message || e);
       } finally {
-        if (!cancelled) setLoading(false); // siempre liberar
+        if (!cancelled) setLoadingSession(false);
       }
     })();
 
-    // 2) Escuchar cambios de auth — tampoco bloquea
+    // 2) Escuchar cambios de auth
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
       async (event, session) => {
         if (cancelled) return;
 
         const u = session?.user ?? null;
         setUser(u);
-        setLoading(false); // siempre liberar UI ante cualquier evento
+        setLoadingSession(false); // libera UI ante cualquier evento
 
         if (event === "SIGNED_IN" && u) {
-          // Asegurar perfil SOLO al iniciar sesión (una vez por usuario)
+          // asegurar perfil una sola vez por usuario
           if (lastEnsuredRef.current !== u.id) {
             lastEnsuredRef.current = u.id;
             ensureProfileOnAuth(u).catch((e) =>
-              console.warn("ensureProfileOnAuth:", e?.message || e)
+              console.warn("[auth] ensureProfileOnAuth:", e?.message || e)
             );
           }
-          // Registrar push (una sola vez por sesión)
-          await maybeRegisterPush(u);
+          // --- Eliminada la llamada a maybeRegisterPush ---
         }
 
         if (event === "SIGNED_OUT") {
-          // Limpia guardas y desregistra token
-          if (lastUserIdRef.current) {
-            try { await unregisterPush(lastUserIdRef.current); } catch {}
-          }
-          didRegisterPushRef.current = false;
+          // --- Eliminada la lógica de unregisterPush ---
           lastEnsuredRef.current = null;
-          lastUserIdRef.current = null;
         }
       }
     );
 
+    // 3) Captura de errores globales
+    const onRejection = (e) => console.error("[unhandledrejection]", e.reason || e);
+    const onError = (e) => console.error("[error]", e.message || e);
+    window.addEventListener("unhandledrejection", onRejection);
+    window.addEventListener("error", onError);
+
     return () => {
       cancelled = true;
-      clearTimeout(failsafe);
       subscription?.unsubscribe?.();
+      window.removeEventListener("unhandledrejection", onRejection);
+      window.removeEventListener("error", onError);
     };
   }, []);
 
@@ -93,14 +80,17 @@ export const AuthProvider = ({ children }) => {
     const { error } = await supabase.auth.signOut();
     if (error) throw error;
     setUser(null);
+    // Resetea guard
     lastEnsuredRef.current = null;
-    didRegisterPushRef.current = false;
-    // unregisterPush también se ejecutará por el listener de SIGNED_OUT
+    // --- Eliminados resets de refs de push ---
   };
 
+  // Alias de compatibilidad
+  const loading = loadingSession;
+
   return (
-    <AuthContext.Provider value={{ user, loading, signOut }}>
-      {loading ? (
+    <AuthContext.Provider value={{ user, loadingSession, loading, signOut }}>
+      {loadingSession ? (
         <div className="min-h-screen flex items-center justify-center">Cargando...</div>
       ) : (
         children
