@@ -17,6 +17,12 @@ export default function Home() {
   const [expandedPetId, setExpandedPetId] = useState(null); // Estado para controlar la fila expandida
   const navigate = useNavigate();
 
+  // --- NUEVO --- (Estados para el modal)
+  const [isModalOpen, setIsModalOpen] = useState(false);
+  const [isInviting, setIsInviting] = useState(false);
+  const [inviteError, setInviteError] = useState(null);
+  // --- FIN NUEVO ---
+
   const ownerName =
     user?.user_metadata?.name || user?.email?.split("@")[0] || "usuario";
 
@@ -92,13 +98,74 @@ export default function Home() {
     setExpandedPetId(currentId => (currentId === petId ? null : petId));
   };
 
+  // --- NUEVO --- (Función para guardar la invitación)
+  const handleInviteSubmit = async (email, petId) => {
+    if (!email || !petId || !user) return false;
+    setIsInviting(true);
+    setInviteError(null);
+
+    try {
+      // -----------------------------------------------------------------
+      // 👇 PASO 1: Llamar a la función 'rpc' que valida el rol 'caregiver'
+      // -----------------------------------------------------------------
+      const { data: rpcData, error: rpcError } = await supabase
+        .schema("petcare") 
+        .rpc('get_user_id_by_email', { 
+          email_to_find: email.toLowerCase().trim() 
+        });
+
+      if (rpcError || !rpcData) {
+        console.error("Error RPC:", rpcError);
+        // Mensaje de error mejorado
+        throw new Error("No se encontró un usuario 'cuidador' con ese email.");
+      }
+      
+      const memberId = rpcData; // La función devuelve el UUID directamente
+
+      // -----------------------------------------------------------------
+      // 👇 PASO 2: Insertar en 'pet_member'
+      // -----------------------------------------------------------------
+      const { error: insertError } = await supabase
+        .schema("petcare")
+        .from("pet_member")
+        .insert({
+          pet_id: petId,
+          member_user_id: memberId, 
+          member_role_id: "caregiver", // El rol en la tabla pet_member
+          permissions: '{"read"}',
+          created_at: new Date().toISOString(),
+          invited_at: new Date().toISOString(),
+          invited_by: user.id, 
+        });
+
+      if (insertError) throw insertError; // Lanza el error para el catch
+
+      // Éxito
+      setIsInviting(false);
+      setIsModalOpen(false); // Cierra el modal
+      return true;
+
+    } catch (err) {
+      setIsInviting(false);
+      console.error("Error al invitar cuidador:", err.message);
+      if (err.code === '23505') { 
+        setInviteError("Este usuario ya es miembro del equipo de esta mascota.");
+      } else {
+        setInviteError(err.message); // Muestra el error "No se encontró un 'cuidador'..."
+      }
+      return false;
+    }
+  };
+  // --- FIN NUEVO ---
+
+
   return (
     <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
       {/* Top actions */}
       <div className="flex items-center justify-end gap-3 pt-6">
         <button
           className="inline-flex items-center gap-2 rounded-xl border px-3 py-2 text-sm hover:bg-gray-50"
-          onClick={() => alert("Invitar Cuidador")}
+          onClick={() => setIsModalOpen(true)} // 👈 MODIFICADO
         >
           <span className="i">👥</span> Invitar Cuidador
         </button>
@@ -203,6 +270,22 @@ export default function Home() {
       </div>
 
       <div className="sr-only">Bienvenido, {ownerName}</div>
+
+      {/* --- NUEVO --- (Renderizado del modal) */}
+      {isModalOpen && (
+        <InviteMemberModal
+          pets={pets}
+          onClose={() => {
+            setIsModalOpen(false);
+            setInviteError(null);
+          }}
+          onSubmit={handleInviteSubmit}
+          loading={isInviting}
+          serverError={inviteError}
+        />
+      )}
+      {/* --- FIN NUEVO --- */}
+
     </div>
   );
 }
@@ -487,3 +570,116 @@ function AppointmentsTab() {
     </div>
   );
 }
+
+
+// --- NUEVO --- (Componente del modal)
+function InviteMemberModal({ pets, onClose, onSubmit, loading, serverError }) {
+  const [email, setEmail] = useState("");
+  const [selectedPetId, setSelectedPetId] = useState(pets[0]?.pet_id || "");
+  const [localError, setLocalError] = useState("");
+
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    setLocalError("");
+    // Limpia el error del servidor anterior si existe
+    if (serverError) setInviteError(null); 
+
+    if (!email.trim() || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+      setLocalError("Por favor, ingresa un correo electrónico válido.");
+      return;
+    }
+    if (!selectedPetId) {
+      setLocalError("Por favor, selecciona una mascota.");
+      return;
+    }
+    
+    // Llama a la función 'handleInviteSubmit' que está en Home
+    await onSubmit(email, selectedPetId); // 👈 Corregido
+  };
+
+  return (
+    // Fondo oscuro (backdrop)
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+      {/* Contenedor del modal */}
+      <form
+        onSubmit={handleSubmit}
+        className="w-full max-w-md rounded-2xl bg-white p-6 shadow-xl"
+      >
+        <h2 className="text-xl font-semibold text-gray-900">Invitar Cuidador</h2>
+        <p className="mt-1 text-sm text-gray-600">
+          Ingresa el correo del cuidador para la mascota seleccionada.
+        </p> {/* 👈 CORREGIDO (antes </loc>) */}
+
+        {/* Formulario */}
+        <div className="mt-6 space-y-4">
+          <div>
+            <label htmlFor="email" className="block text-sm font-medium text-gray-700">
+              Correo electrónico del cuidador
+            </label>
+            <input
+              type="email"
+              id="email"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              placeholder="cuidador@ejemplo.com"
+              className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-black focus:ring-black sm:text-sm"
+              disabled={loading}
+            />
+          </div>
+
+          <div>
+            <label htmlFor="pet" className="block text-sm font-medium text-gray-700">
+              Mascota
+            </label>
+            <select
+              id="pet"
+              value={selectedPetId}
+              onChange={(e) => setSelectedPetId(e.target.value)}
+              className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-black focus:ring-black sm:text-sm"
+              disabled={loading || pets.length === 0}
+            >
+              <option value="" disabled>
+                {pets.length > 0 ? "Elige una mascota..." : "No tienes mascotas registradas"}
+              </option>
+              {pets.map((pet) => (
+                <option key={pet.pet_id} value={pet.pet_id}>
+                  {pet.name}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          {/* Sección de "Rol" eliminada */}
+          
+        </div>
+
+        {/* Errores */}
+        {(localError || serverError) && (
+          <p className="mt-4 text-sm font-medium text-red-600">
+            {localError || serverError}
+          </p>
+        )}
+
+        {/* Botones de acción */}
+        <div className="mt-6 flex justify-end gap-3">
+          <button
+            type="button"
+            onClick={onClose}
+            disabled={loading}
+            className="rounded-xl border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-50"
+          >
+            Cancelar
+          </button>
+          <button
+            type="submit"
+            disabled={loading || pets.length === 0}
+            className="rounded-xl bg-black px-4 py-2 text-sm font-medium text-white hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            {loading ? "Invitando..." : "Enviar Invitación"}
+          </button>
+        </div>
+      </form>
+    </div>
+  );
+}
+// --- FIN NUEVO ---
