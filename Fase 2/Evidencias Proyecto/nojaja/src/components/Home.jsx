@@ -5,17 +5,64 @@ import { useAuth } from "../context/AuthContext.jsx";
 import useMyPets from "../hooks/useMyPets";
 import useAllMyDocuments from "../hooks/useAllMyDocuments";
 import PetCard from "../components/PetCard.jsx";
+import { useEffect } from "react";
+import { supabase } from "../supabaseClient";
 
 export default function Home() {
   const { user } = useAuth();
   const { pets, loading: petsLoading, refreshing } = useMyPets();
   const { documents, loading: docsLoading } = useAllMyDocuments();
+  const [upcomingCount, setUpcomingCount] = useState(0);
   const [tab, setTab] = useState("mascotas");
   const [expandedPetId, setExpandedPetId] = useState(null); // Estado para controlar la fila expandida
   const navigate = useNavigate();
 
   const ownerName =
     user?.user_metadata?.name || user?.email?.split("@")[0] || "usuario";
+
+  useEffect(() => {
+    if (!user) return;
+
+    const fetchUpcomingAppointments = async () => {
+      try {
+        // Obtener todas las mascotas del dueño
+        const { data: pets, error: petsErr } = await supabase
+          .schema("petcare")
+          .from("pet")
+          .select("pet_id")
+          .eq("user_id", user.id);
+
+        if (petsErr || !pets?.length) {
+          setUpcomingCount(0);
+          return;
+        }
+
+        const petIds = pets.map((p) => p.pet_id);
+
+        // Rango de fechas: hoy → 7 días más
+        const today = new Date();
+        const nextWeek = new Date();
+        nextWeek.setDate(today.getDate() + 7);
+
+        const { data: events, error: eventsErr } = await supabase
+          .schema("petcare")
+          .from("event")
+          .select("event_id, ts, e_type_id")
+          .in("pet_id", petIds)
+          .in("e_type_id", ["routine_check", "vaccine_administered"])
+          .gte("ts", today.toISOString())
+          .lte("ts", nextWeek.toISOString());
+
+        if (eventsErr) throw eventsErr;
+        setUpcomingCount(events?.length || 0);
+      } catch (err) {
+        console.error("Error cargando citas próximas:", err);
+        setUpcomingCount(0);
+      }
+    };
+
+    fetchUpcomingAppointments();
+  }, [user]);
 
   // Agrupa los documentos por mascota
   const documentsByPet = useMemo(() => {
@@ -37,7 +84,7 @@ export default function Home() {
 
   const stats = {
     mascotas: pets.length,
-    citasSemana: 0,
+    citasSemana: upcomingCount,
     historiales: documents.length,
   };
 
@@ -109,13 +156,9 @@ export default function Home() {
         )}
 
         {tab === "citas" && (
-          <EmptyState
-            title="No hay citas para mostrar"
-            actionLabel="Agregar Cita"
-            onAction={() => alert("Agregar Cita")}
-          />
+          <AppointmentsTab />
         )}
-        
+
         {/* 👇 SECCIÓN DE HISTORIAL MODIFICADA CON TABLA EXPANDIBLE */}
         {tab === "historial" && (
           docsLoading ? (
@@ -213,7 +256,7 @@ function DocumentSubRow({ document }) {
     link.click();
     document.body.removeChild(link);
   };
-  
+
   return (
     <li className="flex items-center justify-between py-3">
       <div>
@@ -301,6 +344,146 @@ function EmptyState({ title, actionLabel, onAction }) {
       >
         {actionLabel}
       </button>
+    </div>
+  );
+}
+
+function AppointmentsTab() {
+  const { user } = useAuth();
+  const [appointments, setAppointments] = useState([]);
+  const [loading, setLoading] = useState(true);
+
+  const formatDate = (iso) => {
+    const d = new Date(iso);
+    return d.toLocaleString("es-CL", {
+      dateStyle: "long",
+      timeStyle: "short"
+    });
+  };
+
+  const getIcon = (type) =>
+    type === "vaccine_administered" ? "💉" : "👨‍⚕️";
+
+  useEffect(() => {
+    if (!user) return;
+
+    const fetchAppointments = async () => {
+      setLoading(true);
+
+      try {
+        // 1️⃣ Obtener todas las mascotas del dueño logueado
+        const { data: pets, error: petsError } = await supabase
+          .schema("petcare")
+          .from("pet")
+          .select("pet_id, name")
+          .eq("user_id", user.id);
+
+        if (petsError) throw petsError;
+        if (!pets || pets.length === 0) {
+          setAppointments([]);
+          setLoading(false);
+          return;
+        }
+
+        const petIds = pets.map((p) => p.pet_id);
+
+        // 2️⃣ Obtener los eventos (citas) de todas sus mascotas
+        const { data: events, error: eventsError } = await supabase
+          .schema("petcare")
+          .from("event")
+          .select(`
+            event_id,
+            pet_id,
+            e_type_id,
+            ts,
+            clinic_id,
+            vet_id,
+            e_description,
+            pet(name),
+            clinic(name, address, phone),
+            vet(full_name)
+          `)
+          .in("pet_id", petIds)
+          .in("e_type_id", ["routine_check", "vaccine_administered"])
+          .order("ts", { ascending: false }); // ← más reciente primero
+
+        if (eventsError) throw eventsError;
+        setAppointments(events || []);
+      } catch (err) {
+        console.error("Error cargando citas:", err);
+        setAppointments([]);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchAppointments();
+  }, [user]);
+
+  if (!user) {
+    return <div className="text-center py-10 text-gray-600">Inicia sesión para ver tus citas.</div>;
+  }
+
+  if (loading) {
+    return <div className="text-center py-10 text-gray-500">Cargando citas...</div>;
+  }
+
+  if (appointments.length === 0) {
+    return (
+      <div className="text-center py-10 text-gray-500">
+        No hay citas registradas.
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-4">
+      {appointments.map((a) => (
+        <div
+          key={a.event_id}
+          className="border rounded-2xl p-4 hover:shadow-md transition"
+        >
+          <div className="flex items-start justify-between">
+            <div className="flex-1">
+              <div className="flex items-center gap-3 mb-2">
+                <span className="text-2xl">{getIcon(a.e_type_id)}</span>
+                <div className="flex-1">
+                  <div className="flex items-center gap-2">
+                    <h4 className="font-semibold">
+                      {a.e_type_id === "vaccine_administered"
+                        ? "Vacunación"
+                        : "Control Veterinario"}
+                    </h4>
+                    {new Date(a.ts) > new Date() ? (
+                      <span className="px-2 py-0.5 text-xs rounded-full bg-red-100 text-red-700">Programado</span>
+                    ) : (
+                      <span className="px-2 py-0.5 text-xs rounded-full bg-green-100 text-green-700">Realizado</span>
+                    )}
+                  </div>
+                  <p className="text-sm text-gray-500">
+                    {formatDate(a.ts)} — {a.pet?.name || "Mascota"}
+                  </p>
+                </div>
+              </div>
+
+              <div className="space-y-1 text-sm text-gray-700">
+                {a.clinic?.name && (
+                  <p>🏥 {a.clinic.name}</p>
+                )}
+                {a.vet?.full_name && (
+                  <p>👨‍⚕️ {a.vet.full_name}</p>
+                )}
+                {a.clinic?.address && (
+                  <p>📍 {a.clinic.address}</p>
+                )}
+                {a.e_description && (
+                  <p>📝 {a.e_description}</p>
+                )}
+              </div>
+            </div>
+          </div>
+        </div>
+      ))}
     </div>
   );
 }
