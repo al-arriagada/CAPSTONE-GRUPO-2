@@ -18,16 +18,15 @@ export default function CaregiverHome() {
     if (!user) return;
 
     const fetchPendingCount = async () => {
-      // Busca invitaciones para este usuario que aún no han sido aceptadas
+      // Busca invitaciones para este usuario que tengan status 'pending'
       const { count, error } = await supabase
         .schema("petcare")
         .from("pet_member")
-
-        // 👇 CORRECCIÓN 1: Usa 'exact' para el conteo
-        .select(null, { count: "exact", head: true })
-
-        .eq("member_user_id", user.id) // Invitaciones para el usuario actual
-        // 👇 CORRECCIÓN 2: Filtra por invitaciones PENDIENTES (accepted_at es NULL)
+        .select(null, { count: "exact", head: true }) // Correcto
+        .eq("member_user_id", user.id) // Filtra por ID (asegúrate que 'member_user_id' sea el nombre correcto)
+        .eq("member_role_id", "caregiver") // Opcional: Asegura que sea rol cuidador
+        // 👇 CORREGIDO: Filtra solo por invitaciones pendientes
+        .eq("status", "pending"); 
 
       if (error) {
         console.error("Error al buscar conteo de invitaciones:", error);
@@ -37,7 +36,33 @@ export default function CaregiverHome() {
     };
 
     fetchPendingCount();
-  }, [user]);
+
+    // --- OPCIONAL PERO RECOMENDADO: Escuchar cambios ---
+    // Esto hará que el contador se actualice en tiempo real si usas Supabase Realtime
+    const channel = supabase.channel('pending-invites-count')
+      .on('postgres_changes', 
+          { 
+            event: '*', // Escucha INSERT, UPDATE, DELETE
+            schema: 'petcare', 
+            table: 'pet_member', 
+            // Opcional: Filtra por cambios que afecten a este usuario
+            // filter: `member_user_id=eq.${user.id}` 
+          }, 
+          (payload) => {
+            console.log('Cambio detectado en pet_member, recargando conteo...', payload);
+            // Vuelve a contar cuando algo cambie en la tabla
+            fetchPendingCount(); 
+          }
+      )
+      .subscribe();
+
+    // Limpia la suscripción cuando el componente se desmonte
+    return () => {
+      supabase.removeChannel(channel);
+    };
+    // --- FIN OPCIONAL ---
+
+  }, [user]); // Dependencia: user
 
   const stats = {
     mascotasACargo: 0,
@@ -47,7 +72,7 @@ export default function CaregiverHome() {
 
   return (
     <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 py-8">
-      {/* Header and Invitations Button */}
+      {/* Header y Botón de Invitaciones */}
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <div>
           <h1 className="text-3xl font-semibold tracking-tight text-gray-900">
@@ -59,7 +84,7 @@ export default function CaregiverHome() {
         </div>
         <button
           className="relative inline-flex items-center gap-2 rounded-xl border px-4 py-2 text-sm font-semibold hover:bg-gray-50"
-          onClick={() => navigate("/caregiver/invitations")}
+          onClick={() => navigate("/caregiver/invitations")} // Usa la ruta correcta
         >
           <span>Invitaciones</span>
           {invitacionesPendientes > 0 && (
@@ -70,7 +95,7 @@ export default function CaregiverHome() {
         </button>
       </div>
 
-      {/* Stat Cards */}
+      {/* Tarjetas de Estadísticas */}
       <section className="mt-6 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
         <StatCard
           title="Mascotas a Cargo"
@@ -98,37 +123,17 @@ export default function CaregiverHome() {
         />
       </section>
 
-      {/* Navigation Tabs */}
+      {/* Pestañas de Navegación */}
       <div className="mt-8">
         <Tabs activeTab={tab} setActiveTab={setTab} />
       </div>
 
-      {/* Main Tab Content */}
+      {/* Contenido Principal de las Pestañas */}
       <div className="mt-6">
-        {tab === "horario" && (
-          <EmptyState
-            title="No tienes actividades programadas para hoy."
-            description="Cuando un dueño te asigne una mascota con rutinas, aparecerán aquí."
-          />
-        )}
-        {tab === "asignadas" && (
-          <EmptyState
-            title="Aún no tienes mascotas asignadas."
-            description="Pide al dueño de una mascota que te invite como cuidador para empezar."
-          />
-        )}
-        {tab === "compartidas" && (
-          <EmptyState
-            title="Mascotas Compartidas"
-            description="Aquí aparecerán las mascotas que otros dueños te han compartido para su cuidado."
-          />
-        )}
-        {tab === "reportes" && (
-          <EmptyState
-            title="No hay reportes para mostrar."
-            description="Completa actividades para empezar a generar reportes de cuidado."
-          />
-        )}
+        {tab === "horario" && ( <EmptyState title="No tienes actividades..." /> )}
+        {tab === "asignadas" && ( <EmptyState title="Aún no tienes mascotas..." /> )}
+        {tab === "compartidas" && ( <EmptyState title="Mascotas Compartidas..." /> )}
+        {tab === "reportes" && ( <EmptyState title="No hay reportes..." /> )}
       </div>
 
       <div className="sr-only">Bienvenido, {caregiverName}</div>

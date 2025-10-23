@@ -136,7 +136,7 @@ export default function Home() {
           created_at: new Date().toISOString(),
           invited_at: new Date().toISOString(),
           invited_by: user.id, 
-          // status: 'pending' // Se establece por defecto en la BD si agregaste la columna
+          status: "pending"
         });
 
       if (insertError) throw insertError; // Lanza el error para el catch
