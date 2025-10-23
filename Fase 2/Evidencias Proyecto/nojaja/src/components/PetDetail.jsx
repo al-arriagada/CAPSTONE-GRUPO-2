@@ -4,6 +4,7 @@ import { useParams, useNavigate, Link } from "react-router-dom";
 import QRCode from "react-qr-code";
 import { supabase } from "../supabaseClient";
 import { useAuth } from "../context/AuthContext.jsx";
+import RoutinesPanel from "./RoutinesPanel.jsx";
 
 const ALLOWED_EVENT_TYPES = ['heat_cycle', 'medication_dose', 'routine_check', 'vaccine_administered'];
 
@@ -1051,6 +1052,8 @@ END:VCARD`;
                 <div>
                   <h3 className="text-xl font-semibold mb-6">Rutinas y Eventos</h3>
                   <div className="bg-gray-50 p-6 rounded-2xl border shadow-sm">
+                    <RoutinesPanel petId={pet.pet_id} />
+                    <h4 className="text-lg font-medium mb-4"></h4>
                     <h4 className="text-lg font-medium mb-4">Calendario</h4>
                     <Calendar
                       routines={routines}
