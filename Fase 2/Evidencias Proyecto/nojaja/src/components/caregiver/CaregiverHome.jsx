@@ -1,17 +1,43 @@
-// src/components/caregiver/CaregiverHome.jsx
-import React, { useState } from "react";
-import { useNavigate } from "react-router-dom";
-import { useAuth } from "../../context/AuthContext.jsx"; 
+// src/pages/caregiver/CaregiverHome.jsx
 
+import React, { useState, useEffect } from "react";
+import { useNavigate } from "react-router-dom";
+import { useAuth } from "../../context/AuthContext.jsx";
+import { supabase } from "../../supabaseClient"; // Make sure the path is correct
 
 export default function CaregiverHome() {
   const { user } = useAuth();
   const navigate = useNavigate();
-  const [tab, setTab] = useState("horario"); 
+  const [tab, setTab] = useState("horario");
+  const [invitacionesPendientes, setInvitacionesPendientes] = useState(0);
 
-  
-  const caregiverName = user?.user_metadata?.name || user?.email?.split("@")[0] || "Cuidador";
-  const invitacionesPendientes = 0;
+  const caregiverName =
+    user?.user_metadata?.name || user?.email?.split("@")[0] || "Cuidador";
+
+  useEffect(() => {
+    if (!user) return;
+
+    const fetchPendingCount = async () => {
+      // Busca invitaciones para este usuario que aún no han sido aceptadas
+      const { count, error } = await supabase
+        .schema("petcare")
+        .from("pet_member")
+
+        // 👇 CORRECCIÓN 1: Usa 'exact' para el conteo
+        .select(null, { count: "exact", head: true })
+
+        .eq("member_user_id", user.id) // Invitaciones para el usuario actual
+        // 👇 CORRECCIÓN 2: Filtra por invitaciones PENDIENTES (accepted_at es NULL)
+
+      if (error) {
+        console.error("Error al buscar conteo de invitaciones:", error);
+      } else if (count !== null) {
+        setInvitacionesPendientes(count);
+      }
+    };
+
+    fetchPendingCount();
+  }, [user]);
 
   const stats = {
     mascotasACargo: 0,
@@ -21,17 +47,19 @@ export default function CaregiverHome() {
 
   return (
     <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 py-8">
-      {/* Header y Botón de Invitaciones */}
+      {/* Header and Invitations Button */}
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <div>
-          <h1 className="text-3xl font-semibold tracking-tight text-gray-900">Dashboard de Cuidador</h1>
+          <h1 className="text-3xl font-semibold tracking-tight text-gray-900">
+            Dashboard de Cuidador
+          </h1>
           <p className="mt-1 text-gray-500">
             Gestiona el cuidado de las mascotas asignadas
           </p>
         </div>
         <button
           className="relative inline-flex items-center gap-2 rounded-xl border px-4 py-2 text-sm font-semibold hover:bg-gray-50"
-          onClick={() => alert("Navegar a invitaciones")}
+          onClick={() => navigate("/caregiver/invitations")}
         >
           <span>Invitaciones</span>
           {invitacionesPendientes > 0 && (
@@ -42,7 +70,7 @@ export default function CaregiverHome() {
         </button>
       </div>
 
-      {/* Tarjetas de Estadísticas */}
+      {/* Stat Cards */}
       <section className="mt-6 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
         <StatCard
           title="Mascotas a Cargo"
@@ -58,18 +86,24 @@ export default function CaregiverHome() {
         />
         <StatCard
           title="Progreso Diario"
-          value={`${stats.totalActividades > 0 ? Math.round((stats.actividadesCompletadas / stats.totalActividades) * 100) : 0}%`}
+          value={`${
+            stats.totalActividades > 0
+              ? Math.round(
+                  (stats.actividadesCompletadas / stats.totalActividades) * 100
+                )
+              : 0
+          }%`}
           helper="del día completado"
           icon="🕒"
         />
       </section>
 
-      {/* Pestañas de Navegación */}
+      {/* Navigation Tabs */}
       <div className="mt-8">
         <Tabs activeTab={tab} setActiveTab={setTab} />
       </div>
 
-      {/* Contenido Principal de las Pestañas */}
+      {/* Main Tab Content */}
       <div className="mt-6">
         {tab === "horario" && (
           <EmptyState
@@ -101,7 +135,6 @@ export default function CaregiverHome() {
     </div>
   );
 }
-
 
 function StatCard({ title, value, helper, icon }) {
   return (

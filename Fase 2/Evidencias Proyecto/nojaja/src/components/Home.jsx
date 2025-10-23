@@ -136,6 +136,7 @@ export default function Home() {
           created_at: new Date().toISOString(),
           invited_at: new Date().toISOString(),
           invited_by: user.id, 
+          // status: 'pending' // Se establece por defecto en la BD si agregaste la columna
         });
 
       if (insertError) throw insertError; // Lanza el error para el catch
@@ -582,7 +583,7 @@ function InviteMemberModal({ pets, onClose, onSubmit, loading, serverError }) {
     e.preventDefault();
     setLocalError("");
     // Limpia el error del servidor anterior si existe
-    if (serverError) setInviteError(null); 
+    // if (serverError) setInviteError(null); // <- Causa error si setInviteError no se pasa
 
     if (!email.trim() || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
       setLocalError("Por favor, ingresa un correo electrónico válido.");

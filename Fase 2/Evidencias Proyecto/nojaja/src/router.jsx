@@ -19,7 +19,7 @@ import ProtectedRouteByRole from "./components/ProtectedRouteByRole.jsx";
 import VetDashboard from "./components/vet/VetDashboard.jsx";
 import PetHealthReport from "./components/PetHealthReport.jsx";
 import CaregiverHome from "./components/caregiver/CaregiverHome.jsx";
-
+import Invitations from "./components/caregiver/invitations.jsx";
 
 const router = createBrowserRouter([
   // Rutas públicas
@@ -157,6 +157,15 @@ const router = createBrowserRouter([
         element: (
           <ProtectedRoute>
             <PetDetail /> {}
+          </ProtectedRoute>
+        ),
+      },
+
+      {
+        path: "invitations", // -> /caregiver/invitations
+        element: (
+          <ProtectedRoute> 
+            <Invitations /> 
           </ProtectedRoute>
         ),
       },
