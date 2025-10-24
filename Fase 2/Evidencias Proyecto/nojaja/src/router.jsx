@@ -20,14 +20,13 @@ import VetDashboard from "./components/vet/VetDashboard.jsx";
 import PetHealthReport from "./components/PetHealthReport.jsx";
 import CaregiverHome from "./components/caregiver/CaregiverHome.jsx";
 import Invitations from "./components/caregiver/invitations.jsx";
-import CreateReportPage from "./components/caregiver/CreateReportPage.jsx"; 
-import ViewReportPage from "./components/caregiver/ViewReportPage.jsx";
+import OwnerInvitations from "./components/owner/OwnerInvitations.jsx";
 
 const router = createBrowserRouter([
   // Rutas públicas
   {
     path: "/",
-    element: <RedirectAuthHome><PublicLayout /></RedirectAuthHome> ,
+    element: <RedirectAuthHome><PublicLayout /></RedirectAuthHome>,
     children: [{ index: true, element: <HomePublic /> }],
   },
   {
@@ -47,7 +46,7 @@ const router = createBrowserRouter([
     ),
   },
   {
-    path:"/report/:id", element:(<PetHealthReport />)
+    path: "/report/:id", element: (<PetHealthReport />)
   },
 
   // Rutas privadas (/app)
@@ -107,6 +106,48 @@ const router = createBrowserRouter([
     ],
   },
   {
+    path: "/owner",
+    element: (
+      <ProtectedRouteByRole allowedRoles={["owner"]}>
+        <AppLayout />
+      </ProtectedRouteByRole>
+    ),
+    children: [
+      {
+        index: true,
+        element: (
+          <ProtectedRoute>
+            <HomePrivate />
+          </ProtectedRoute>
+        ),
+      },
+      {
+        path: "invitations", // 👉 /owner/invitations
+        element: (
+          <ProtectedRoute>
+            <OwnerInvitations />
+          </ProtectedRoute>
+        ),
+      },
+      {
+        path: "profile",
+        element: (
+          <ProtectedRoute>
+            <OwnerProfile />
+          </ProtectedRoute>
+        ),
+      },
+      {
+        path: "pets/:id",
+        element: (
+          <ProtectedRoute>
+            <PetDetail />
+          </ProtectedRoute>
+        ),
+      },
+    ],
+  },
+  {
     path: "/vet",
     element: (
       <ProtectedRouteByRole allowedRoles={["vet"]}>
@@ -115,7 +156,7 @@ const router = createBrowserRouter([
     ),
     children: [
       { index: true, element: <VetDashboard /> },
-            {
+      {
         path: "profile",
         element: (
           <ProtectedRoute>
@@ -124,7 +165,7 @@ const router = createBrowserRouter([
         ),
       },
 
-            {
+      {
         path: "pets/:id",
         element: (
           <ProtectedRoute>
@@ -158,7 +199,7 @@ const router = createBrowserRouter([
         path: "pets/:id",
         element: (
           <ProtectedRoute>
-            <PetDetail /> {}
+            <PetDetail /> { }
           </ProtectedRoute>
         ),
       },
@@ -166,26 +207,8 @@ const router = createBrowserRouter([
       {
         path: "invitations", // -> /caregiver/invitations
         element: (
-          <ProtectedRoute> 
-            <Invitations /> 
-          </ProtectedRoute>
-        ),
-      },
-
-      {
-        path: "reportes/crear/:petId", // -> /caregiver/reportes/crear/PET_UUID
-        element: (
           <ProtectedRoute>
-            <CreateReportPage />
-          </ProtectedRoute>
-        ),
-      },
-      {
-        // -> /caregiver/reportes/ver/PET_UUID/YYYY-MM-DD
-        path: "reportes/ver/:petId/:reportDate",
-        element: (
-          <ProtectedRoute>
-            <ViewReportPage />
+            <Invitations />
           </ProtectedRoute>
         ),
       },
