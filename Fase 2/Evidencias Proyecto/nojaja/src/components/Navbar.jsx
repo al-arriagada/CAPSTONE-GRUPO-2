@@ -1,9 +1,12 @@
 // src/components/Navbar.jsx
-import React, { useState } from "react";
+import React, { useState, useRef, useEffect } from "react";
 import { Link, NavLink, useNavigate } from "react-router-dom";
 import { useAuth } from "../context/AuthContext.jsx";
 import useProfile from "../hooks/useProfile.js";
 import useUserRole from "../hooks/useUserRole.js"; // ⬅️ NUEVO
+import { useAlertsCount } from "../hooks/useAlertsCount.js";
+import { FaUser, FaBell, FaRegBell } from "react-icons/fa";
+import AlertsPopover from './AlertsPopover.jsx';
 
 export default function Navbar() {
   const [open, setOpen] = useState(false);
@@ -11,6 +14,8 @@ export default function Navbar() {
   const { user, signOut, loading } = useAuth();
   const { profile, displayName, loading: loadingProfile } = useProfile(user);
   const { role, loading: loadingRole } = useUserRole(); // ⬅️ NUEVO
+  const {count, loadingAlerts} = useAlertsCount();
+  const [isPopoverOpen, setIsPopoverOpen] = useState(false);
 
   const handleLogout = async () => {
     navigate("/", { replace: true }); // evita volver a rutas privadas al retroceder
@@ -20,6 +25,18 @@ export default function Navbar() {
       console.error(e);
     }
   };
+
+  const popoverRef = useRef(null);
+  useEffect(() => {
+    function handleClickOutside(event) {
+      if (popoverRef.current && !popoverRef.current.contains(event.target)) {
+        setIsPopoverOpen(false);
+      }
+    }
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, [popoverRef]);
+
 
   // Home según rol (si no hay sesión => landing "/")
   const homePath = user ? (role === "vet" ? "/vet" : "/app") : "/";
@@ -47,6 +64,35 @@ export default function Navbar() {
 
         {/* Right: auth actions */}
         <div className="hidden items-center gap-2 md:flex">
+          {/* --- 🔔 ESTE ES EL NUEVO BLOQUE 🔔 --- */}
+          <div className="relative" ref={popoverRef}>
+            {/* El botón de la campana */}
+            <button
+              onClick={() => setIsPopoverOpen(prev => !prev)} // Abre/cierra
+              className="relative inline-flex items-center justify-center p-2 rounded-full
+             text-slate-600 hover:text-slate-900 hover:bg-slate-100
+             focus:outline-none focus:ring-2 focus:ring-black/20"
+            >
+              <span className="h-5 w-5" aria-hidden="true">
+                <FaRegBell/>
+              </span>
+              {!loadingAlerts && count > 0 && (
+                <span className="absolute top-0 right-0 -translate-y-1/3 translate-x-1/3
+                 inline-flex h-[18px] min-w-[18px] items-center justify-center
+                 rounded-full bg-black px-1 text-[10px] font-semibold text-white
+                 ring-2 ring-white">
+                  {count}
+                </span>
+              )}
+            </button>
+
+            {/* El Popover (Dropdown) */}
+            {isPopoverOpen && (
+              <AlertsPopover onClose={() => setIsPopoverOpen(false)} />
+            )}
+          </div>
+          {/* --- FIN DEL NUEVO BLOQUE --- */}
+
           {loading ? (
             <div className="h-8 w-24 animate-pulse rounded-md bg-gray-200" />
           ) : user ? (

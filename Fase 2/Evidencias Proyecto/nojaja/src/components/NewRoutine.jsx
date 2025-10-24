@@ -5,19 +5,24 @@ import { supabase } from "../supabaseClient.js";
 import { useAuth } from "../context/AuthContext.jsx";
 
 const FREQS = [
+  // ... (no cambia) ...
   { id: "daily", label: "Diaria" },
   { id: "weekly", label: "Semanal" },
   { id: "monthly", label: "Mensual" },
   { id: "once", label: "Una sola vez" },
 ];
 
-export default function NewRoutineModal({ petId, onClose, onCreated }) {
+// 1. Aceptar 'routineToEdit'
+export default function NewRoutineModal({ petId, onClose, onCreated, routineToEdit = null }) {
   const { user } = useAuth();
+  
+  // 2. Definir si estamos en modo Edición
+  const isEditMode = Boolean(routineToEdit);
 
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
   const [typeId, setTypeId] = useState("");
-  const [time, setTime] = useState(""); // "HH:mm"
+  const [time, setTime] = useState("");
   const [startDate, setStartDate] = useState(() =>
     new Date().toISOString().slice(0, 10)
   );
@@ -30,6 +35,7 @@ export default function NewRoutineModal({ petId, onClose, onCreated }) {
   const [saving, setSaving] = useState(false);
   const [err, setErr] = useState("");
 
+  // Cargar catálogo de tipos (no cambia)
   useEffect(() => {
     (async () => {
       const { data, error } = await supabase
@@ -41,7 +47,48 @@ export default function NewRoutineModal({ petId, onClose, onCreated }) {
     })();
   }, []);
 
+  // 3. Rellenar formulario si es modo Edición
+  useEffect(() => {
+    if (isEditMode && routineToEdit) {
+      setTitle(routineToEdit.title || "");
+      setTypeId(routineToEdit.routine_type_id || "");
+      setTime(routineToEdit.time_local || "");
+      setActive(routineToEdit.active);
+      
+      const rrule = routineToEdit.rrule;
+      if (!rrule) {
+        setFreq("once");
+      } else if (rrule.includes("FREQ=DAILY")) {
+        setFreq("daily");
+      } else if (rrule.includes("FREQ=WEEKLY")) {
+        setFreq("weekly");
+      } else if (rrule.includes("FREQ=MONTHLY")) {
+        setFreq("monthly");
+      }
+      
+      // Extraer 'UNTIL' (fecha de fin) del rrule si existe
+      if (rrule && rrule.includes("UNTIL=")) {
+        const untilPart = rrule.split('UNTIL=')[1];
+        const yyyymmdd = untilPart.split('T')[0];
+        if (yyyymmdd && yyyymmdd.length === 8) {
+          const y = yyyymmdd.substring(0, 4);
+          const m = yyyymmdd.substring(4, 6);
+          const d = yyyymmdd.substring(6, 8);
+          setEndDate(`${y}-${m}-${d}`);
+        }
+      } else {
+        setEndDate("");
+      }
+
+      // Los campos 'description', 'startDate' y 'enableAlerts'
+      // solo se usan al crear la primera alerta, así que los ocultamos
+      // y deshabilitamos.
+      setEnableAlerts(false);
+    }
+  }, [isEditMode, routineToEdit]);
+
   const buildRrule = () => {
+    // ... (no cambia) ...
     if (freq === "once") return null;
     let rule = `RRULE:FREQ=${freq.toUpperCase()}`;
     if (endDate) {
@@ -57,14 +104,13 @@ export default function NewRoutineModal({ petId, onClose, onCreated }) {
   };
 
   const nextOccurrence = () => {
+    // ... (no cambia) ...
     const [hh, mm] = (time || "00:00").split(":").map(Number);
     const [y, m, d] = (startDate || new Date().toISOString().slice(0, 10))
       .split("-")
       .map(Number);
-
     let dt = new Date(y, m - 1, d, hh, mm, 0, 0);
     const now = new Date();
-
     if (dt <= now) {
       if (freq === "once") dt.setDate(dt.getDate() + 1);
       else if (freq === "daily") while (dt <= now) dt.setDate(dt.getDate() + 1);
@@ -72,6 +118,66 @@ export default function NewRoutineModal({ petId, onClose, onCreated }) {
       else if (freq === "monthly") while (dt <= now) dt.setMonth(dt.getMonth() + 1);
     }
     return dt;
+  };
+  
+  // 4. Lógica de CREAR (separada)
+  const handleCreate = async () => {
+    const rrule = buildRrule();
+    const firstAt = nextOccurrence();
+
+    // 1) rutina
+    const { data: routine, error: rErr } = await supabase
+      .schema("petcare")
+      .from("routine")
+      .insert({
+        pet_id: petId,
+        routine_type_id: typeId,
+        rrule: rrule,
+        time_local: time,
+        active,
+        user_id: user.id,
+        title: title.trim(),
+      })
+      .select()
+      .single();
+    if (rErr) throw rErr;
+
+    // 2) primera alerta (email)
+    if (enableAlerts) {
+      const { error: aErr } = await supabase
+        .schema("petcare")
+        .from("alert")
+        .insert({
+          routine_id: routine.routine_id,
+          pet_id: routine.pet_id,
+          scheduled_at: firstAt.toISOString(),
+          status_id: "scheduled",
+          user_id: user.id,
+          title: routine.title,
+          body: description?.trim() || "",
+          channels: ["email"],
+        });
+      if (aErr) throw aErr;
+    }
+  };
+  
+  // 5. Lógica de ACTUALIZAR (nueva)
+  const handleUpdate = async () => {
+    const rrule = buildRrule();
+    
+    const { error: rErr } = await supabase
+      .schema("petcare")
+      .from("routine")
+      .update({
+        routine_type_id: typeId,
+        rrule: rrule,
+        time_local: time,
+        active,
+        title: title.trim(),
+      })
+      .eq("routine_id", routineToEdit.routine_id);
+      
+    if (rErr) throw rErr;
   };
 
   const onSubmit = async (e) => {
@@ -83,65 +189,41 @@ export default function NewRoutineModal({ petId, onClose, onCreated }) {
     if (!title.trim() || !typeId || !time) {
       return setErr("Completa título, tipo y hora.");
     }
+    
+    // En modo edición, no se requiere 'startDate'
+    if (!isEditMode && !startDate) {
+      return setErr("Completa la fecha de inicio.");
+    }
 
     setSaving(true);
     try {
-      const rrule = buildRrule();
-      const firstAt = nextOccurrence();
-
-      // 1) rutina
-      const { data: routine, error: rErr } = await supabase
-        .schema("petcare")
-        .from("routine")
-        .insert({
-          pet_id: petId,
-          routine_type_id: typeId,
-          rrule: rrule,
-          time_local: time, // HH:mm
-          active,
-          user_id: user.id,
-          title: title.trim(),
-        })
-        .select()
-        .single();
-
-      if (rErr) throw rErr;
-
-      // 2) primera alerta (email)
-      if (enableAlerts) {
-        const { error: aErr } = await supabase
-          .schema("petcare")
-          .from("alert")
-          .insert({
-            routine_id: routine.routine_id,
-            pet_id: routine.pet_id,
-            scheduled_at: firstAt.toISOString(),
-            status_id: "scheduled",
-            user_id: user.id,
-            title: routine.title,
-            body: description?.trim() || "",
-            channels: ["email"],
-          });
-        if (aErr) throw aErr;
+      // 6. Decidir qué lógica ejecutar
+      if (isEditMode) {
+        await handleUpdate();
+      } else {
+        await handleCreate();
       }
 
       setSaving(false);
-      onCreated?.();
-      onClose?.();
+      onCreated?.(); // Refresca la lista
+      onClose?.();   // Cierra el modal
+      
     } catch (e2) {
       console.error(e2);
-      setErr(e2.message || "No se pudo crear la rutina.");
+      setErr(e2.message || "No se pudo guardar la rutina.");
       setSaving(false);
     }
   };
 
-  // ⬇️ Render con PORTAL para evitar quedar “debajo”
   return createPortal(
     <div className="fixed inset-0 z-[9999] flex items-center justify-center">
       <div className="absolute inset-0 bg-black/40" onClick={onClose} />
-      <div className="relative bg-white rounded-2xl w-full max-w-xl p-6 shadow-xl">
+      <div className="relative bg-white rounded-2xl w-full max-w-xl p-6 shadow-xl max-h-[90vh] overflow-y-auto">
         <div className="flex items-start justify-between mb-1">
-          <h3 className="text-lg font-semibold">Nueva Rutina</h3>
+          {/* 7. Título dinámico */}
+          <h3 className="text-lg font-semibold">
+            {isEditMode ? "Editar Rutina" : "Nueva Rutina"}
+          </h3>
           <button
             type="button"
             className="text-gray-500 hover:text-gray-800"
@@ -150,8 +232,13 @@ export default function NewRoutineModal({ petId, onClose, onCreated }) {
             ✕
           </button>
         </div>
+        
+        {/* 8. Descripción dinámica */}
         <p className="text-sm text-gray-600 mb-4">
-          Define la regla y programamos la primera alerta automáticamente.
+          {isEditMode 
+            ? "Modifica los detalles de la regla de rutina."
+            : "Define la regla y programamos la primera alerta automáticamente."
+          }
         </p>
 
         {err && (
@@ -172,16 +259,21 @@ export default function NewRoutineModal({ petId, onClose, onCreated }) {
             />
           </div>
 
-          <div>
-            <label className="block text-sm font-medium mb-1">Descripción</label>
-            <textarea
-              className="w-full border rounded-lg px-3 py-2"
-              placeholder="Notas, instrucciones, dosis…"
-              rows={3}
-              value={description}
-              onChange={(e) => setDescription(e.target.value)}
-            />
-          </div>
+          {/* 9. Ocultar campos de "Solo Creación" */}
+          {!isEditMode && (
+            <>
+              <div>
+                <label className="block text-sm font-medium mb-1">Descripción</label>
+                <textarea
+                  className="w-full border rounded-lg px-3 py-2"
+                  placeholder="Notas, instrucciones, dosis…"
+                  rows={3}
+                  value={description}
+                  onChange={(e) => setDescription(e.target.value)}
+                />
+              </div>
+            </>
+          )}
 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div>
@@ -225,16 +317,19 @@ export default function NewRoutineModal({ petId, onClose, onCreated }) {
               />
             </div>
 
-            <div>
-              <label className="block text-sm font-medium mb-1">Inicio *</label>
-              <input
-                type="date"
-                className="w-full border rounded-lg px-3 py-2"
-                value={startDate}
-                onChange={(e) => setStartDate(e.target.value)}
-                required
-              />
-            </div>
+            {/* 9. Ocultar campos de "Solo Creación" */}
+            {!isEditMode && (
+              <div>
+                <label className="block text-sm font-medium mb-1">Inicio *</label>
+                <input
+                  type="date"
+                  className="w-full border rounded-lg px-3 py-2"
+                  value={startDate}
+                  onChange={(e) => setStartDate(e.target.value)}
+                  required
+                />
+              </div>
+            )}
 
             <div>
               <label className="block text-sm font-medium mb-1">Fin (opcional)</label>
@@ -256,14 +351,18 @@ export default function NewRoutineModal({ petId, onClose, onCreated }) {
               />
               Rutina activa
             </label>
-            <label className="flex items-center gap-2 text-sm">
-              <input
-                type="checkbox"
-                checked={enableAlerts}
-                onChange={(e) => setEnableAlerts(e.target.checked)}
-              />
-              Recordatorios por email
-            </label>
+            
+            {/* 9. Ocultar campos de "Solo Creación" */}
+            {!isEditMode && (
+              <label className="flex items-center gap-2 text-sm">
+                <input
+                  type="checkbox"
+                  checked={enableAlerts}
+                  onChange={(e) => setEnableAlerts(e.target.checked)}
+                />
+                Recordatorios por email
+              </label>
+            )}
           </div>
 
           <div className="flex justify-end gap-2">
@@ -280,7 +379,8 @@ export default function NewRoutineModal({ petId, onClose, onCreated }) {
               className="px-4 py-2 rounded-lg text-white bg-black hover:bg-gray-800 disabled:opacity-50"
               disabled={saving}
             >
-              {saving ? "Guardando…" : "Crear Rutina"}
+              {/* 10. Texto de botón dinámico */}
+              {saving ? "Guardando…" : (isEditMode ? "Guardar Cambios" : "Crear Rutina")}
             </button>
           </div>
         </form>
