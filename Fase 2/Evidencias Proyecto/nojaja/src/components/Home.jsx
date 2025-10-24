@@ -112,7 +112,6 @@ export default function Home() {
           species_id,
           user_id,
           current_weight,
-          care_instructions,
           owner:app_user!user_id(full_name)
         `)
           .in("pet_id", petIds);
