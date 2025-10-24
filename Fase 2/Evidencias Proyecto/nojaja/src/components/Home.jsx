@@ -109,7 +109,7 @@ export default function Home() {
           breed,
           birth_date,
           image_url,
-          specie_id,
+          species_id,
           user_id,
           current_weight,
           care_instructions,
