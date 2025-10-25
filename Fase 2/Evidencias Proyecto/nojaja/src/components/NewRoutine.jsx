@@ -197,17 +197,28 @@ export default function NewRoutineModal({ petId, onClose, onCreated, routineToEd
 
     setSaving(true);
     try {
+      let createdNewAlert = false;
       // 6. Decidir qué lógica ejecutar
       if (isEditMode) {
         await handleUpdate();
       } else {
         await handleCreate();
+
+        if (enableAlerts) {
+          createdNewAlert = true;
+        }
+
       }
 
       setSaving(false);
       onCreated?.(); // Refresca la lista
       onClose?.();   // Cierra el modal
       
+      if (createdNewAlert) {
+        window.dispatchEvent(new Event('alertsChanged'));
+      }
+
+
     } catch (e2) {
       console.error(e2);
       setErr(e2.message || "No se pudo guardar la rutina.");

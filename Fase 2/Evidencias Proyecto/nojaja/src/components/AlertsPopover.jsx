@@ -1,5 +1,5 @@
 // src/components/AlertsPopover.jsx
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { supabase } from '../supabaseClient.js';
 import { useAuth } from '../context/AuthContext.jsx';
 import { Link } from 'react-router-dom'; // Opcional, para linkear
@@ -10,12 +10,12 @@ function useTodayAlerts() {
   const [alerts, setAlerts] = useState([]);
   const [loading, setLoading] = useState(true);
 
-  const fetchAlerts = async (isMounted) => {
+  const fetchAlerts = useCallback(async () => {
     if (!user) {
-      if (isMounted) setLoading(false);
+      setLoading(false);
       return;
     }
-    if (isMounted) setLoading(true);
+    setLoading(true);
 
     const todayStart = new Date(); todayStart.setHours(0, 0, 0, 0);
     const todayEnd = new Date(); todayEnd.setHours(23, 59, 59, 999);
@@ -33,32 +33,42 @@ function useTodayAlerts() {
       .lte('scheduled_at', todayEnd.toISOString())
       .order('scheduled_at', { ascending: true });
     
-    if (isMounted) {
+
       if (!error) setAlerts(data || []);
       setLoading(false);
-    }
-  };
+
+  }, [user]);
+
+  const fetchAlertsRef = useRef(fetchAlerts);
+  useEffect(() => {
+    fetchAlertsRef.current = fetchAlerts;
+  }, [fetchAlerts]);
+
 
   useEffect(() => {
-    let isMounted = true;
-    fetchAlerts(isMounted);
+    if (!user) {
+      setLoading(false);
+      setAlerts([]);
+      return;
+    }
+
+    fetchAlerts();
     
     const channel = supabase
       .channel('today-alerts-popover-ch')
       .on(
         'postgres_changes',
         { event: '*', schema: 'petcare', table: 'alert', filter: `user_id=eq.${user?.id}` },
-        () => fetchAlerts(isMounted)
+        fetchAlerts
       )
       .subscribe();
 
     return () => {
-      isMounted = false;
       supabase.removeChannel(channel);
     };
-  }, [user]);
+  }, [user, fetchAlerts]);
 
-  return { alerts, loading, fetchAlerts: () => fetchAlerts(true) };
+  return { alerts, loading, fetchAlerts };
 }
 
 
@@ -79,8 +89,12 @@ export default function AlertsPopover({ onClose }) {
     // No necesitamos fetchAlerts() aquí porque el canal de Supabase
     // detectará el cambio y actualizará la lista automáticamente.
     // Si la actualización no es instantánea, descomenta la línea de abajo:
-    // await fetchAlerts();
-    
+    await fetchAlerts();
+    window.dispatchEvent(new Event('alertsChanged'));
+    // if (onAlertCompleted) {
+    //   onAlertCompleted();
+    // }
+
     setIsCompleting(null);
   };
 

@@ -88,7 +88,8 @@ export default function Navbar() {
 
             {/* El Popover (Dropdown) */}
             {isPopoverOpen && (
-              <AlertsPopover onClose={() => setIsPopoverOpen(false)} />
+              <AlertsPopover onClose={() => setIsPopoverOpen(false)}
+              />
             )}
           </div>
           {/* --- FIN DEL NUEVO BLOQUE --- */}
