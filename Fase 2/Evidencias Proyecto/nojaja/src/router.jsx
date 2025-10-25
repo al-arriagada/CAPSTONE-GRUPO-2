@@ -22,7 +22,7 @@ import CaregiverHome from "./components/caregiver/CaregiverHome.jsx";
 import Invitations from "./components/caregiver/invitations.jsx";
 import OwnerInvitations from "./components/owner/OwnerInvitations.jsx";
 import CreateReportPage from "./components/caregiver/CreateReportPage.jsx"; 
-import ViewReportPage from "./components/caregiver/ViewReportPage.jsx";
+
 
 
 const router = createBrowserRouter([
@@ -224,15 +224,7 @@ const router = createBrowserRouter([
           </ProtectedRoute>
         ),
       },
-      {
-        // -> /caregiver/reportes/ver/PET_UUID/YYYY-MM-DD
-        path: "reportes/ver/:petId/:reportDate",
-        element: (
-          <ProtectedRoute>
-            <ViewReportPage />
-          </ProtectedRoute>
-        ),
-      },
+    
     
     ],
   },
