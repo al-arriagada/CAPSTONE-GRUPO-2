@@ -3,7 +3,17 @@ import { useEffect, useState, useRef } from "react";
 import { supabase } from "../supabaseClient";
 import { useAuth } from "../context/AuthContext";
 import {
-  FaUser, FaPhone, FaEnvelope, FaIdCard, FaCalendar, FaEdit, FaSave, FaImage, FaTimes, FaAddressBook, FaMap
+  FaUser,
+  FaPhone,
+  FaEnvelope,
+  FaIdCard,
+  FaCalendar,
+  FaEdit,
+  FaSave,
+  FaImage,
+  FaTimes,
+  FaAddressBook,
+  FaMap,
 } from "react-icons/fa";
 import { normalizeRut } from "../services/profile";
 import useUserRole from "../hooks/useUserRole";
@@ -30,7 +40,10 @@ export default function OwnerProfile() {
 
   // ---- helpers de formato ----
   const formatRutInput = (value) => {
-    const cleaned = (value || "").replace(/[^0-9kK]/g, "").toUpperCase().slice(0, 9);
+    const cleaned = (value || "")
+      .replace(/[^0-9kK]/g, "")
+      .toUpperCase()
+      .slice(0, 9);
     if (cleaned.length <= 1) return cleaned;
     const body = cleaned.slice(0, -1);
     const dv = cleaned.slice(-1);
@@ -43,13 +56,15 @@ export default function OwnerProfile() {
     if (cleanRut.length < 2) return false;
     const body = cleanRut.slice(0, -1);
     const dv = cleanRut.slice(-1).toUpperCase();
-    let sum = 0, mul = 2;
+    let sum = 0,
+      mul = 2;
     for (let i = body.length - 1; i >= 0; i--) {
       sum += parseInt(body[i], 10) * mul;
       mul = mul === 7 ? 2 : mul + 1;
     }
     const expected = 11 - (sum % 11);
-    const calc = expected === 11 ? "0" : expected === 10 ? "K" : String(expected);
+    const calc =
+      expected === 11 ? "0" : expected === 10 ? "K" : String(expected);
     return dv === calc;
   };
 
@@ -79,14 +94,16 @@ export default function OwnerProfile() {
   };
   const formatPhone = (local8) => {
     const d = (local8 || "").replace(/\D/g, "").slice(0, 8);
-    const a = d.slice(0, 4), b = d.slice(4, 8);
+    const a = d.slice(0, 4),
+      b = d.slice(4, 8);
     if (!d) return "";
     if (d.length <= 4) return `+56 9 ${a}`;
     return `+56 9 ${a} ${b}`;
   };
   const calculateAge = (dateStr) => {
     if (!dateStr) return 0;
-    const today = new Date(), birth = new Date(dateStr);
+    const today = new Date(),
+      birth = new Date(dateStr);
     let age = today.getFullYear() - birth.getFullYear();
     const m = today.getMonth() - birth.getMonth();
     if (m < 0 || (m === 0 && today.getDate() < birth.getDate())) age--;
@@ -95,7 +112,11 @@ export default function OwnerProfile() {
   const formatDate = (dateStr) => {
     if (!dateStr) return "-";
     const date = new Date(dateStr);
-    return date.toLocaleDateString("es-CL", { day: "2-digit", month: "2-digit", year: "numeric" });
+    return date.toLocaleDateString("es-CL", {
+      day: "2-digit",
+      month: "2-digit",
+      year: "numeric",
+    });
   };
 
   const avatarUrl = profile?.avatar_url
@@ -105,13 +126,20 @@ export default function OwnerProfile() {
   // ---- cargar catálogos geo ----
   useEffect(() => {
     (async () => {
-      const { data } = await supabase.schema("petcare").from("region").select("*").order("name");
+      const { data } = await supabase
+        .schema("petcare")
+        .from("region")
+        .select("*")
+        .order("name");
       setRegions(data || []);
     })();
   }, []);
 
   useEffect(() => {
-    if (!regionId) { setComunas([]); return; }
+    if (!regionId) {
+      setComunas([]);
+      return;
+    }
     (async () => {
       const { data } = await supabase
         .schema("petcare")
@@ -152,7 +180,9 @@ export default function OwnerProfile() {
             .select("region_id")
             .eq("comuna_id", appUser.comuna_id)
             .single();
-          initialRegionId = comunaRow?.region_id ? String(comunaRow.region_id) : "";
+          initialRegionId = comunaRow?.region_id
+            ? String(comunaRow.region_id)
+            : "";
         }
 
         const base = {
@@ -198,9 +228,12 @@ export default function OwnerProfile() {
 
   const validateBeforeSave = () => {
     const newErrors = {};
-    if (formData.rut && !validateRut(formData.rut)) newErrors.rut = "RUT inválido";
-    if (formData.phone && formData.phone.length !== 8) newErrors.phone = "El teléfono debe tener 8 dígitos locales";
-    if (formData.birth_date && calculateAge(formData.birth_date) < 18) newErrors.birth_date = "Debes tener al menos 18 años";
+    if (formData.rut && !validateRut(formData.rut))
+      newErrors.rut = "RUT inválido";
+    if (formData.phone && formData.phone.length !== 8)
+      newErrors.phone = "El teléfono debe tener 8 dígitos locales";
+    if (formData.birth_date && calculateAge(formData.birth_date) < 18)
+      newErrors.birth_date = "Debes tener al menos 18 años";
     setErrors(newErrors);
     return Object.keys(newErrors).length === 0;
   };
@@ -243,7 +276,10 @@ export default function OwnerProfile() {
       if (piiError) throw piiError;
 
       // reflejar en estado local
-      const updated = { ...formData, comuna_id: comunaId ? Number(comunaId) : null };
+      const updated = {
+        ...formData,
+        comuna_id: comunaId ? Number(comunaId) : null,
+      };
       setProfile(updated);
       setEditMode(false);
       setMessage("Perfil actualizado correctamente ✅");
@@ -312,11 +348,16 @@ export default function OwnerProfile() {
   };
 
   // helpers para mostrar nombres
-  const regionName = regionId ? regions.find(r => String(r.region_id) === String(regionId))?.name : null;
-  const comunaName = comunaId ? comunas.find(c => String(c.comuna_id) === String(comunaId))?.name : null;
+  const regionName = regionId
+    ? regions.find((r) => String(r.region_id) === String(regionId))?.name
+    : null;
+  const comunaName = comunaId
+    ? comunas.find((c) => String(c.comuna_id) === String(comunaId))?.name
+    : null;
 
   if (loading) return <p className="text-center mt-10">Cargando perfil...</p>;
-  if (!profile) return <p className="text-center mt-10">Perfil no encontrado.</p>;
+  if (!profile)
+    return <p className="text-center mt-10">Perfil no encontrado.</p>;
 
   return (
     <div className="max-w-4xl mx-auto px-4 py-8">
@@ -350,14 +391,20 @@ export default function OwnerProfile() {
         </div>
       </div>
 
-      {message && <p className="mb-4 text-center text-sm text-blue-600">{message}</p>}
+      {message && (
+        <p className="mb-4 text-center text-sm text-blue-600">{message}</p>
+      )}
 
       {/* Avatar + título */}
       <div className="bg-white rounded-lg shadow p-6 mb-6">
         <div className="flex flex-col sm:flex-row items-center sm:items-start gap-4">
           <div className="relative w-24 h-24 rounded-full overflow-hidden bg-gray-200">
             {avatarUrl ? (
-              <img src={avatarUrl + `?t=${Date.now()}`} alt="avatar" className="w-full h-full object-cover" />
+              <img
+                src={avatarUrl + `?t=${Date.now()}`}
+                alt="avatar"
+                className="w-full h-full object-cover"
+              />
             ) : (
               <div className="flex items-center justify-center w-full h-full text-3xl text-gray-500">
                 <FaUser />
@@ -372,11 +419,26 @@ export default function OwnerProfile() {
                 <FaImage size={14} />
               </button>
             )}
-            <input type="file" accept="image/*" ref={fileInputRef} onChange={handleUpload} hidden />
+            <input
+              type="file"
+              accept="image/*"
+              ref={fileInputRef}
+              onChange={handleUpload}
+              hidden
+            />
           </div>
           <div className="text-center sm:text-left">
-            <h2 className="text-2xl font-semibold">{profile.full_name || "-"}</h2>
-            <p className="text-sm text-gray-500">{role === "vet" ? "Veterinario/a" : "Dueño/a de Mascota"}</p>
+            <h2 className="text-2xl font-semibold">
+              {profile.full_name || "-"}
+            </h2>
+            {/* 👇 CORREGIDO: Añade la condición para 'caregiver' 👇 */}
+            <p className="text-sm text-gray-500">
+              {role === "vet"
+                ? "Veterinario/a"
+                : role === "caregiver"
+                ? "Cuidador/a"
+                : "Dueño/a de Mascota"}
+            </p>
           </div>
         </div>
       </div>
@@ -390,8 +452,15 @@ export default function OwnerProfile() {
               <FaEnvelope /> Correo electrónico
             </label>
             {editMode ? (
-              <input name="email" value={formData.email} onChange={handleChange} className="border rounded px-2 py-1 w-full" />
-            ) : (profile.email || "-")}
+              <input
+                name="email"
+                value={formData.email}
+                onChange={handleChange}
+                className="border rounded px-2 py-1 w-full"
+              />
+            ) : (
+              profile.email || "-"
+            )}
           </div>
 
           <div>
@@ -409,13 +478,17 @@ export default function OwnerProfile() {
                   className="border rounded px-2 py-1 w-full"
                   placeholder="+56 9 1234 5678"
                 />
-                {errors.phone && <p className="text-xs text-red-600 mt-1">{errors.phone}</p>}
+                {errors.phone && (
+                  <p className="text-xs text-red-600 mt-1">{errors.phone}</p>
+                )}
               </>
-            ) : (formatPhone(profile.phone) || "-")}
+            ) : (
+              formatPhone(profile.phone) || "-"
+            )}
           </div>
 
           <div className="sm:col-span-2">
-            <label className="text-sm font-medium flex items-center gap-2"> 
+            <label className="text-sm font-medium flex items-center gap-2">
               <FaAddressBook /> Dirección
             </label>
             {editMode ? (
@@ -426,28 +499,42 @@ export default function OwnerProfile() {
                 className="border rounded px-2 py-1 w-full"
                 placeholder="Calle 123, depto 45"
               />
-            ) : (profile.address_line || "-")}
+            ) : (
+              profile.address_line || "-"
+            )}
           </div>
 
           {/* Región / Comuna */}
           <div>
-            <label className="text-sm font-medium flex items-center gap-2"><FaMap /> Región</label>
+            <label className="text-sm font-medium flex items-center gap-2">
+              <FaMap /> Región
+            </label>
             {editMode ? (
               <select
                 className="border rounded px-2 py-1 w-full bg-white"
                 value={regionId}
-                onChange={(e) => { setRegionId(e.target.value); setComunaId(""); }}
+                onChange={(e) => {
+                  setRegionId(e.target.value);
+                  setComunaId("");
+                }}
               >
                 <option value="">Seleccionar región</option>
-                {regions.map(r => (
-                  <option key={r.region_id} value={r.region_id}>{r.name}</option>
+                {regions.map((r) => (
+                  <option key={r.region_id} value={r.region_id}>
+                    {r.name}
+                  </option>
                 ))}
               </select>
-            ) : (regionName || "-")}
+            ) : (
+              regionName || "-"
+            )}
           </div>
 
           <div>
-            <label className="text-sm font-medium flex items-center gap-2"> <FaMap /> Comuna</label>
+            <label className="text-sm font-medium flex items-center gap-2">
+              {" "}
+              <FaMap /> Comuna
+            </label>
             {editMode ? (
               <select
                 className="border rounded px-2 py-1 w-full bg-white"
@@ -455,14 +542,18 @@ export default function OwnerProfile() {
                 onChange={(e) => setComunaId(e.target.value)}
                 disabled={!regionId}
               >
-                <option value="">{regionId ? "Seleccionar comuna" : "Primero elige región"}</option>
-                {comunas.map(c => (
-                  <option key={c.comuna_id} value={c.comuna_id}>{c.name}</option>
+                <option value="">
+                  {regionId ? "Seleccionar comuna" : "Primero elige región"}
+                </option>
+                {comunas.map((c) => (
+                  <option key={c.comuna_id} value={c.comuna_id}>
+                    {c.name}
+                  </option>
                 ))}
               </select>
             ) : (
               // mostrar nombre si coincide con lista actual; si no, cae a "-"
-              (comunaName || "-")
+              comunaName || "-"
             )}
           </div>
         </div>
@@ -477,8 +568,15 @@ export default function OwnerProfile() {
               <FaUser /> Nombre completo
             </label>
             {editMode ? (
-              <input name="full_name" value={formData.full_name} onChange={handleChange} className="border rounded px-2 py-1 w-full" />
-            ) : (profile.full_name || "-")}
+              <input
+                name="full_name"
+                value={formData.full_name}
+                onChange={handleChange}
+                className="border rounded px-2 py-1 w-full"
+              />
+            ) : (
+              profile.full_name || "-"
+            )}
           </div>
 
           <div>
@@ -495,9 +593,13 @@ export default function OwnerProfile() {
                   maxLength={12}
                   placeholder="12.345.678-9"
                 />
-                {errors.rut && <p className="text-xs text-red-600 mt-1">{errors.rut}</p>}
+                {errors.rut && (
+                  <p className="text-xs text-red-600 mt-1">{errors.rut}</p>
+                )}
               </>
-            ) : (formatRutDisplay(profile.rut) || "-")}
+            ) : (
+              formatRutDisplay(profile.rut) || "-"
+            )}
           </div>
 
           <div>
@@ -514,9 +616,15 @@ export default function OwnerProfile() {
                   className="border rounded px-2 py-1 w-full"
                   max={new Date().toISOString().split("T")[0]}
                 />
-                {errors.birth_date && <p className="text-xs text-red-600 mt-1">{errors.birth_date}</p>}
+                {errors.birth_date && (
+                  <p className="text-xs text-red-600 mt-1">
+                    {errors.birth_date}
+                  </p>
+                )}
               </>
-            ) : (formatDate(profile.birth_date))}
+            ) : (
+              formatDate(profile.birth_date)
+            )}
           </div>
 
           <div>
@@ -524,13 +632,20 @@ export default function OwnerProfile() {
               <FaUser /> Género
             </label>
             {editMode ? (
-              <select name="gender" value={formData.gender || ""} onChange={handleChange} className="border rounded px-2 py-1 w-full">
+              <select
+                name="gender"
+                value={formData.gender || ""}
+                onChange={handleChange}
+                className="border rounded px-2 py-1 w-full"
+              >
                 <option value="">Seleccionar</option>
                 <option value="Femenino">Femenino</option>
                 <option value="Masculino">Masculino</option>
                 <option value="Otro">Otro</option>
               </select>
-            ) : (profile.gender || "-")}
+            ) : (
+              profile.gender || "-"
+            )}
           </div>
         </div>
       </div>

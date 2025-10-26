@@ -1,24 +1,24 @@
 // src/components/Navbar.jsx
 import React, { useState, useRef, useEffect } from "react";
 import { Link, NavLink, useNavigate } from "react-router-dom";
-import { useAuth } from "../context/AuthContext.jsx";
-import useProfile from "../hooks/useProfile.js";
-import useUserRole from "../hooks/useUserRole.js"; // ⬅️ NUEVO
-import { useAlertsCount } from "../hooks/useAlertsCount.js";
+import { useAuth } from "../context/AuthContext.jsx"; // Asegúrate que la ruta sea correcta
+import useProfile from "../hooks/useProfile.js"; // Asegúrate que la ruta sea correcta
+import useUserRole from "../hooks/useUserRole.js"; // Asegúrate que la ruta sea correcta
+import { useAlertsCount } from "../hooks/useAlertsCount.js"; // Asegúrate que la ruta sea correcta
 import { FaUser, FaBell, FaRegBell } from "react-icons/fa";
-import AlertsPopover from './AlertsPopover.jsx';
+import AlertsPopover from './AlertsPopover.jsx'; // Asegúrate que la ruta sea correcta
 
 export default function Navbar() {
   const [open, setOpen] = useState(false);
   const navigate = useNavigate();
   const { user, signOut, loading } = useAuth();
   const { profile, displayName, loading: loadingProfile } = useProfile(user);
-  const { role, loading: loadingRole } = useUserRole(); // ⬅️ NUEVO
+  const { role, loading: loadingRole } = useUserRole(); // Obtiene 'owner', 'vet', 'caregiver'
   const {count, loadingAlerts} = useAlertsCount();
   const [isPopoverOpen, setIsPopoverOpen] = useState(false);
 
   const handleLogout = async () => {
-    navigate("/", { replace: true }); // evita volver a rutas privadas al retroceder
+    navigate("/", { replace: true });
     try {
       await signOut();
     } catch (e) {
@@ -37,14 +37,26 @@ export default function Navbar() {
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, [popoverRef]);
 
+  // --- 👇 Home según rol (ACTUALIZADO) ---
+  const homePath = user
+    ? role === "vet"
+      ? "/vet"
+      : role === "caregiver" // <-- AÑADIDO: Caso Caregiver
+      ? "/caregiver"        // <-- Ruta para Caregiver
+      : "/app"              // Default a owner/app
+    : "/";                  // Sin sesión, va al landing
 
-  // Home según rol (si no hay sesión => landing "/")
-  const homePath = user ? (role === "vet" ? "/vet" : "/app") : "/";
+  // --- 👇 Ruta del Perfil según rol (ACTUALIZADO) ---
+  const profilePath = role === "vet"
+    ? "/vet/profile"
+    : role === "caregiver" // <-- AÑADIDO: Caso Caregiver
+    ? "/caregiver/profile" // <-- Ruta para Caregiver (ajusta si es diferente)
+    : "/app/profile";      // Default a owner/app
 
   return (
     <nav className="sticky top-0 z-50 border-b bg-white/80 backdrop-blur">
       <div className="mx-auto flex h-14 max-w-7xl items-center justify-between px-4 sm:px-6 lg:px-8">
-        {/* Left: logo */}
+        {/* Left: logo (Usa homePath dinámico) */}
         <div className="flex items-center gap-2">
           <Link to={homePath} className="flex items-center gap-2">
             <span className="text-xl">🐾</span>
@@ -54,47 +66,50 @@ export default function Navbar() {
 
         {/* Center: links (ocultos en mobile) */}
         <div className="hidden items-center gap-4 md:flex">
+          {/* Enlaces Owner */}
           {user && !loadingRole && role === "owner" && (
             <NavItem to="/app">Dashboard</NavItem>
+            /* Puedes añadir más NavItems para owner aquí */
           )}
+          {/* Enlaces Vet */}
           {user && !loadingRole && role === "vet" && (
             <NavItem to="/vet">Pacientes</NavItem>
+            /* Puedes añadir más NavItems para vet aquí */
+          )}
+          {/* --- 👇 AÑADIDO: Enlaces para Caregiver --- */}
+          {user && !loadingRole && role === "caregiver" && (
+            <>
+              {/* Ejemplo: Si quieres un enlace a la home del cuidador */}
+              <NavItem to="/caregiver">Dashboard</NavItem>
+              {/* Ejemplo: <NavItem to="/caregiver/invitations">Invitaciones</NavItem> */}
+              {/* Añade aquí los enlaces principales que necesite el cuidador */}
+            </>
           )}
         </div>
 
         {/* Right: auth actions */}
         <div className="hidden items-center gap-2 md:flex">
-          {/* --- 🔔 ESTE ES EL NUEVO BLOQUE 🔔 --- */}
+          {/* Bloque Notificaciones (sin cambios funcionales) */}
           <div className="relative" ref={popoverRef}>
-            {/* El botón de la campana */}
             <button
-              onClick={() => setIsPopoverOpen(prev => !prev)} // Abre/cierra
-              className="relative inline-flex items-center justify-center p-2 rounded-full
-             text-slate-600 hover:text-slate-900 hover:bg-slate-100
-             focus:outline-none focus:ring-2 focus:ring-black/20"
+              onClick={() => setIsPopoverOpen(prev => !prev)}
+              className="relative inline-flex items-center justify-center p-2 rounded-full text-slate-600 hover:text-slate-900 hover:bg-slate-100 focus:outline-none focus:ring-2 focus:ring-black/20"
             >
-              <span className="h-5 w-5" aria-hidden="true">
-                <FaRegBell/>
-              </span>
+              <span className="h-5 w-5" aria-hidden="true"> <FaRegBell/> </span>
               {!loadingAlerts && count > 0 && (
-                <span className="absolute top-0 right-0 -translate-y-1/3 translate-x-1/3
-                 inline-flex h-[18px] min-w-[18px] items-center justify-center
-                 rounded-full bg-black px-1 text-[10px] font-semibold text-white
-                 ring-2 ring-white">
+                <span className="absolute top-0 right-0 -translate-y-1/3 translate-x-1/3 inline-flex h-[18px] min-w-[18px] items-center justify-center rounded-full bg-black px-1 text-[10px] font-semibold text-white ring-2 ring-white">
                   {count}
                 </span>
               )}
             </button>
-
-            {/* El Popover (Dropdown) */}
             {isPopoverOpen && (
-              <AlertsPopover onClose={() => setIsPopoverOpen(false)}
-              />
+              <AlertsPopover onClose={() => setIsPopoverOpen(false)} />
             )}
           </div>
-          {/* --- FIN DEL NUEVO BLOQUE --- */}
+          {/* Fin Notificaciones */}
 
-          {loading ? (
+          {/* Menú Usuario / Login/Signup */}
+          {loading || loadingRole ? ( // Muestra carga si auth o rol están cargando
             <div className="h-8 w-24 animate-pulse rounded-md bg-gray-200" />
           ) : user ? (
             <UserMenu
@@ -103,21 +118,14 @@ export default function Navbar() {
               avatarPath={profile?.avatar_url}
               loadingName={loadingProfile}
               onLogout={handleLogout}
-              // ⬇️ Perfil/entrada según rol
-              avatarTo={role === "vet" ? "/vet/profile" : "/app/profile"}
+              avatarTo={profilePath} // <-- Usa profilePath dinámico
             />
           ) : (
             <>
-              <Link
-                to="/signin"
-                className="rounded-xl border px-3 py-1.5 text-sm hover:bg-gray-50"
-              >
+              <Link to="/signin" className="rounded-xl border px-3 py-1.5 text-sm hover:bg-gray-50">
                 Iniciar sesión
               </Link>
-              <Link
-                to="/signup"
-                className="rounded-xl bg-black px-3 py-1.5 text-sm text-white hover:opacity-90"
-              >
+              <Link to="/signup" className="rounded-xl bg-black px-3 py-1.5 text-sm text-white hover:opacity-90">
                 Registrarse
               </Link>
             </>
@@ -140,16 +148,17 @@ export default function Navbar() {
           <div className="mx-auto flex max-w-7xl flex-col gap-2 px-4 py-3">
             <div className="h-px bg-gray-200 my-2" />
 
-            {loading ? (
+            {loading || loadingRole ? ( // Muestra carga si auth o rol están cargando
               <div className="h-8 w-24 animate-pulse rounded-md bg-gray-200" />
             ) : user ? (
               <>
+                {/* Info Usuario (Usa profilePath dinámico) */}
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-3">
                     <Avatar
                       fallback={user?.email}
                       avatarUrl={profile?.avatar_url}
-                      to={role === "vet" ? "/vet" : "/app/profile"}
+                      to={profilePath} // <-- Usa profilePath dinámico
                     />
                     <div className="text-sm">
                       <div className="font-medium leading-tight">
@@ -166,32 +175,31 @@ export default function Navbar() {
                   </button>
                 </div>
 
-                {/* Enlaces principales según rol */}
-                {!loadingRole && (
-                  <div className="mt-2">
-                    <NavItem
-                      to={role === "vet" ? "/vet" : "/app"}
-                      onClick={() => setOpen(false)}
-                    >
-                      {role === "vet" ? "Pacientes" : "Dashboard"}
-                    </NavItem>
-                  </div>
-                )}
+                {/* Enlaces principales según rol (Móvil) */}
+                <div className="mt-2">
+                  <NavItem
+                    to={homePath} // <-- Usa homePath dinámico
+                    onClick={() => setOpen(false)}
+                  >
+                    {/* --- 👇 Texto según rol --- */}
+                    {role === "vet" ? "Pacientes"
+                     : role === "caregiver" ? "Dashboard Cuidador" // Ajusta texto si prefieres
+                     : "Dashboard Dueño"}
+                  </NavItem>
+                  {/* --- 👇 AÑADIDO: Otros enlaces para Caregiver (Ej: Invitaciones) --- */}
+                   {role === "caregiver" && (
+                       <NavItem to="/caregiver/invitations" onClick={() => setOpen(false)}>Invitaciones</NavItem>
+                   )}
+                   {/* Añade más NavItems si son necesarios para otros roles en móvil */}
+                </div>
               </>
             ) : (
+              // Botones Login/Signup (Móvil)
               <div className="flex gap-2">
-                <Link
-                  to="/signin"
-                  onClick={() => setOpen(false)}
-                  className="flex-1 rounded-xl border px-3 py-1.5 text-center text-sm hover:bg-gray-50"
-                >
+                <Link to="/signin" onClick={() => setOpen(false)} className="flex-1 rounded-xl border px-3 py-1.5 text-center text-sm hover:bg-gray-50">
                   Iniciar sesión
                 </Link>
-                <Link
-                  to="/signup"
-                  onClick={() => setOpen(false)}
-                  className="flex-1 rounded-xl bg-black px-3 py-1.5 text-center text-sm text-white hover:opacity-90"
-                >
+                <Link to="/signup" onClick={() => setOpen(false)} className="flex-1 rounded-xl bg-black px-3 py-1.5 text-center text-sm text-white hover:opacity-90">
                   Registrarse
                 </Link>
               </div>
@@ -203,6 +211,8 @@ export default function Navbar() {
   );
 }
 
+// --- Componentes Helper (sin cambios funcionales, ajustados para móvil) ---
+
 function NavItem({ to, end, children, onClick }) {
   return (
     <NavLink
@@ -211,8 +221,8 @@ function NavItem({ to, end, children, onClick }) {
       onClick={onClick}
       className={({ isActive }) =>
         [
-          "rounded-xl px-3 py-1.5 text-sm",
-          isActive ? "bg-black text-white" : "hover:bg-gray-50",
+          "block rounded-xl px-3 py-1.5 text-sm", // 'block' ayuda en layout móvil
+          isActive ? "bg-black text-white" : "text-gray-700 hover:bg-gray-100", // Estilos ajustados
         ].join(" ")
       }
     >
@@ -221,7 +231,8 @@ function NavItem({ to, end, children, onClick }) {
   );
 }
 
-function UserMenu({ user, name, avatarPath, loadingName, onLogout, avatarTo = "/app/profile" }) {
+// Recibe avatarTo dinámico
+function UserMenu({ user, name, avatarPath, loadingName, onLogout, avatarTo }) {
   return (
     <div className="flex items-center gap-3">
       <Avatar fallback={user?.email} avatarUrl={avatarPath} to={avatarTo} />
@@ -231,13 +242,16 @@ function UserMenu({ user, name, avatarPath, loadingName, onLogout, avatarTo = "/
       </span>
       <button
         onClick={onLogout}
-        className="rounded-xl border px-3 py-1.5 text-sm hover:bg-gray-50"
+        className="rounded-xl border px-3 py-1.5 text-sm text-gray-700 hover:bg-gray-100" // Estilos ajustados
       >
         Cerrar sesión
       </button>
     </div>
   );
 }
+
+
+
 
 function Avatar({ fallback, avatarUrl, to = "/app/profile" }) {
   const letter = (fallback || "?").toString().charAt(0).toUpperCase();

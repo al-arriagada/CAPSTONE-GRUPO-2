@@ -1,32 +1,56 @@
 // src/pages/caregiver/CaregiverHome.jsx
 
-import React, { useState, useEffect, useCallback } from "react";
+import React, { useState, useEffect, useCallback, useMemo } from "react";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "../../context/AuthContext.jsx";
 import { supabase } from "../../supabaseClient";
-// 👇 Importa la tarjeta de mascota diseñada para el cuidador
-import AssignedPetCard from "../../components/caregiver/AssignedPetCard.jsx"; // Ajusta la ruta si es necesario
+import AssignedPetCard from "../../components/caregiver/AssignedPetCard.jsx";
 
-// Helper simple para obtener YYYY-MM-DD
-const getTodayDateString = () => new Date().toISOString().split('T')[0];
+// --- HELPER DE FECHA (Versión segura) ---
+const getTodayDateString = () => {
+  const today = new Date();
+  const y = today.getFullYear();
+  const m = String(today.getMonth() + 1).padStart(2, '0');
+  const d = String(today.getDate()).padStart(2, '0');
+  return `${y}-${m}-${d}`; 
+};
+
+// --- HELPER DE RANGO DE FECHA (NUEVO) ---
+const getTodayUTCRange = () => {
+  const start = new Date();
+  start.setHours(0, 0, 0, 0); // Inicio del día local
+  const end = new Date(start);
+  end.setDate(end.getDate() + 1); // Inicio del día siguiente
+  return {
+    startOfDayUTC: start.toISOString(),
+    endOfDayUTC: end.toISOString()
+  };
+};
+
 
 export default function CaregiverHome() {
   const { user } = useAuth();
-  const navigate = useNavigate(); // La necesitamos para navegar a "Crear/Ver Reporte"
-  const [tab, setTab] = useState("asignadas"); 
+  const navigate = useNavigate();
+  const [tab, setTab] = useState("horario"); // <-- Cambiado a 'horario' por defecto
   const [invitacionesPendientes, setInvitacionesPendientes] = useState(0);
   
-  // Mascotas para la pestaña "Asignadas" (vista de tarjeta)
+  // Estado para "Mascotas Asignadas"
   const [assignedPetsForDashboard, setAssignedPetsForDashboard] = useState([]);
   const [mascotasACargoCount, setMascotasACargoCount] = useState(0);
   const [loadingAssignedPetsDashboard, setLoadingAssignedPetsDashboard] = useState(true);
   
-  // Mascotas para la pestaña "Reportes" (vista de lista con botones)
+  // Estado para "Reportes"
   const [petsForReports, setPetsForReports] = useState([]);
   const [loadingPetsForReports, setLoadingPetsForReports] = useState(true);
 
+  // --- NUEVO ESTADO para "Horario de Hoy" ---
+  const [todayActivities, setTodayActivities] = useState([]);
+  const [loadingTodayActivities, setLoadingTodayActivities] = useState(true);
+  const [todayStats, setTodayStats] = useState({ completed: 0, total: 0 });
+  // -----------------------------------------
+
   const [error, setError] = useState(null); 
-  const todayDate = getTodayDateString(); // Fecha de hoy para los reportes
+  const todayDate = getTodayDateString();
 
   const caregiverName =
     user?.user_metadata?.name || user?.email?.split("@")[0] || "Cuidador";
@@ -38,9 +62,9 @@ export default function CaregiverHome() {
       .schema("petcare")
       .from("pet_member")
       .select(null, { count: "exact", head: true })
-      .eq("member_user_id", user.id) // Asegúrate que 'member_user_id' sea el nombre correcto
+      .eq("member_user_id", user.id)
       .eq("member_role_id", "caregiver")
-      .eq("status", "pending"); // Busca status SIN comillas
+      .eq("status", "pending");
 
     if (error) {
       console.error("Error al buscar conteo de invitaciones:", error);
@@ -60,49 +84,45 @@ export default function CaregiverHome() {
       setLoadingAssignedPetsDashboard(true);
       setError(null); 
       try {
-          // ----- CONSULTA 1: IDs aceptados -----
           const { data: acceptedMembers, error: membersError } = await supabase
-              .schema("petcare").from("pet_member").select("pet_id")
-              .eq("member_user_id", user.id).eq("member_role_id", "caregiver").eq("status", "accepted");
+            .schema("petcare").from("pet_member").select("pet_id")
+            .eq("member_user_id", user.id).eq("member_role_id", "caregiver").eq("status", "accepted");
           if (membersError) throw membersError;
           if (!acceptedMembers || acceptedMembers.length === 0) {
-              setAssignedPetsForDashboard([]);
-              setMascotasACargoCount(0);
-              setLoadingAssignedPetsDashboard(false);
-              return;
+            setAssignedPetsForDashboard([]);
+            setMascotasACargoCount(0);
+            setLoadingAssignedPetsDashboard(false);
+            return;
           }
           const petIds = acceptedMembers.map(member => member.pet_id);
 
-          // ----- CONSULTA 2: Detalles de Mascotas y Nombres -----
           const { data: petsData, error: petsError } = await supabase
-              .schema("petcare").from("pet")
-              .select(`
-                  pet_id, name, breed, birth_date, image_url,
-                  species_id, user_id, current_weight, 
-                  owner_profile: app_user!user_id ( user_id, full_name )
-              `)
-              .in("pet_id", petIds);
+            .schema("petcare").from("pet")
+            .select(`
+                pet_id, name, breed, birth_date, image_url,
+                species_id, user_id, current_weight, 
+                owner_profile: app_user!user_id ( user_id, full_name )
+            `)
+            .in("pet_id", petIds);
           if (petsError) throw petsError;
           if (!petsData) throw new Error("No pet details found for dashboard.");
 
-          // ----- CONSULTA 3: Teléfonos -----
           const ownerIds = petsData.map(pet => pet.user_id).filter(Boolean);
           let ownerPhones = {};
           if (ownerIds.length > 0) {
-              const { data: piiData, error: piiError } = await supabase
-                  .schema("petcare").from("user_pii").select("user_id, phone").in("user_id", ownerIds);
-              if (piiError) console.warn("Error fetching owner phones:", piiError);
-              else if (piiData) ownerPhones = piiData.reduce((map, pii) => { map[pii.user_id] = pii.phone; return map; }, {});
+            const { data: piiData, error: piiError } = await supabase
+              .schema("petcare").from("user_pii").select("user_id, phone").in("user_id", ownerIds);
+            if (piiError) console.warn("Error fetching owner phones:", piiError);
+            else if (piiData) ownerPhones = piiData.reduce((map, pii) => { map[pii.user_id] = pii.phone; return map; }, {});
           }
 
-          // ----- Combinar y Actualizar -----
           const combinedPetsData = petsData.map(pet => ({
-              ...pet,
-              owner: {
-                  user_id: pet.owner_profile?.user_id,
-                  full_name: pet.owner_profile?.full_name,
-                  phone: ownerPhones[pet.user_id] || null
-              }
+            ...pet,
+            owner: {
+                user_id: pet.owner_profile?.user_id,
+                full_name: pet.owner_profile?.full_name,
+                phone: ownerPhones[pet.user_id] || null
+            }
           }));
           setAssignedPetsForDashboard(combinedPetsData);
           setMascotasACargoCount(combinedPetsData.length || 0);
@@ -127,7 +147,6 @@ export default function CaregiverHome() {
     setLoadingPetsForReports(true);
     setError(null);
     try {
-        // ----- CONSULTA 1: IDs aceptados (repite lógica) -----
         const { data: acceptedMembers, error: membersError } = await supabase
             .schema("petcare")
             .from("pet_member")
@@ -144,7 +163,6 @@ export default function CaregiverHome() {
         }
         const petIds = acceptedMembers.map((member) => member.pet_id);
 
-        // ----- CONSULTA 2: Detalles simples (para la lista) -----
         const { data: petsData, error: petsError } = await supabase
             .schema("petcare")
             .from("pet")
@@ -159,35 +177,26 @@ export default function CaregiverHome() {
         if (petsError) throw petsError;
         if (!petsData) throw new Error("No se encontraron detalles de mascotas para reportes.");
 
-        // ----- CONSULTA 3: CORREGIDA - Verificar 'alert' en lugar de 'daily_care_report' -----
-        const todayStart = `${todayDate}T00:00:00.000Z`;
-        const todayEnd = `${todayDate}T23:59:59.999Z`;
-
-        let reportsMap = new Set(); // Usamos un Set para IDs de mascotas
-        const { data: existingAlerts, error: alertsError } = await supabase
+        // CONSULTA 3: Verificar 'activity_log' para ver si hay reportes guardados
+        const { data: existingLogs, error: logsError } = await supabase
             .schema("petcare")
-            .from("alert") // Busca en la tabla 'alert'
-            .select("pet_id") // Solo necesitamos saber qué mascotas tienen
-            .eq("completed_by", user.id) // Hechos por este cuidador
-            .gte("scheduled_at", todayStart) // Programados para hoy
-            .lte("scheduled_at", todayEnd)
-            .in("status_id", ["completed", "omitted"]); // Que estén marcados
+            .from("activity_log")
+            .select("pet_id")
+            .in("pet_id", petIds)
+            .eq("activity_date", todayDate)
+            .in("status_id", ["completed", "skipped"]); // Usamos 'skipped'
 
-        if (alertsError) {
-            console.warn("Error al buscar reportes existentes en 'alert':", alertsError);
-        } else if (existingAlerts) {
-            // Añade los pet_id al Set
-            reportsMap = new Set(existingAlerts.map(r => r.pet_id));
+        let reportsMap = new Set();
+        if (logsError) {
+            console.warn("Error al buscar reportes existentes en 'activity_log':", logsError);
+        } else if (existingLogs) {
+            reportsMap = new Set(existingLogs.map(r => r.pet_id));
         }
-        // ----- FIN CONSULTA 3 -----
 
-        // Combina datos
         const petsWithReportStatus = petsData.map(pet => ({
             ...pet,
             owner_name: pet.owner_profile?.full_name || 'N/A',
-            // Revisa si el Set incluye el ID de esta mascota
             has_report_for_today: reportsMap.has(pet.pet_id), 
-            // today_report_id ya no es necesario, usaremos la fecha
         }));
 
         setPetsForReports(petsWithReportStatus);
@@ -199,13 +208,113 @@ export default function CaregiverHome() {
     } finally {
         setLoadingPetsForReports(false);
     }
-  }, [user, todayDate]); // Depende del usuario y la fecha
+  }, [user, todayDate]);
+
+  // --- 👇 NUEVA FUNCIÓN para "Horario de Hoy" ---
+  const fetchTodayActivities = useCallback(async () => {
+    if (!user) {
+      setTodayActivities([]);
+      setLoadingTodayActivities(false);
+      return;
+    }
+    setLoadingTodayActivities(true);
+    setError(null);
+
+    try {
+      // 1. Obtener IDs de mascotas asignadas (igual que en las otras funciones)
+      const { data: acceptedMembers, error: membersError } = await supabase
+        .schema("petcare").from("pet_member").select("pet_id")
+        .eq("member_user_id", user.id)
+        .eq("member_role_id", "caregiver")
+        .eq("status", "accepted");
+
+      if (membersError) throw membersError;
+      if (!acceptedMembers || acceptedMembers.length === 0) {
+        setTodayActivities([]);
+        setTodayStats({ completed: 0, total: 0 });
+        setLoadingTodayActivities(false);
+        return;
+      }
+      const petIds = acceptedMembers.map(member => member.pet_id);
+
+      // 2. Obtener ALERTAS de hoy para todas esas mascotas
+      const { startOfDayUTC, endOfDayUTC } = getTodayUTCRange();
+      const { data: todayAlerts, error: alertError } = await supabase
+        .schema("petcare")
+        .from("alert")
+        .select(`
+          alert_id, 
+          routine_id, 
+          pet_id,
+          title, 
+          status_id, 
+          scheduled_at,
+          pet: pet ( name ),
+          routine: routine ( time_local )
+        `)
+        .in("pet_id", petIds)
+        .gte("scheduled_at", startOfDayUTC)
+        .lt("scheduled_at", endOfDayUTC)
+        .order("scheduled_at", { ascending: true });
+
+      if (alertError) throw alertError;
+
+      // 3. Obtener LOGS de hoy para ver el estado real
+      const todayString = getTodayDateString();
+      const { data: todayLogs, error: logError } = await supabase
+        .schema("petcare")
+        .from("activity_log")
+        .select("routine_id, status_id")
+        .in("pet_id", petIds)
+        .eq("activity_date", todayString);
+
+      if (logError) throw logError;
+      const logMap = new Map((todayLogs || []).map(log => [log.routine_id, log]));
+
+      // 4. Combinar datos
+      const combinedActivities = todayAlerts.map(alert => {
+        const log = logMap.get(alert.routine_id);
+        const finalStatus = log ? log.status_id : alert.status_id;
+        const isCompletedOrSkipped = finalStatus === 'completed' || finalStatus === 'skipped';
+
+        return {
+          alert_id: alert.alert_id,
+          routine_id: alert.routine_id,
+          pet_id: alert.pet_id,
+          title: alert.title,
+          time: alert.routine?.time_local?.substring(0, 5) || alert.scheduled_at.substring(11, 16),
+          pet_name: alert.pet?.name || 'Mascota',
+          is_completed: isCompletedOrSkipped,
+          status: finalStatus
+        };
+      });
+
+      setTodayActivities(combinedActivities);
+
+      // 5. Actualizar estadísticas
+      const completedCount = combinedActivities.filter(a => a.is_completed).length;
+      const totalCount = combinedActivities.length;
+      setTodayStats({ completed: completedCount, total: totalCount });
+
+    } catch (e) {
+      console.error("Error fetching today's activities:", e);
+      setError(e.message || "Error al cargar el horario de hoy.");
+      setTodayActivities([]);
+      setTodayStats({ completed: 0, total: 0 });
+    } finally {
+      setLoadingTodayActivities(false);
+    }
+  }, [user]);
+  // --- 👆 FIN NUEVA FUNCIÓN ---
+
 
   // --- Main useEffect ---
   useEffect(() => {
     if (!user) return; 
 
+    // Carga los datos que siempre son necesarios (invitaciones, stats)
     fetchPendingCount(); 
+    fetchTodayActivities(); // <-- Se llama siempre para las Stats Cards
 
     // Carga los datos de la pestaña activa
     if (tab === "asignadas") {
@@ -221,15 +330,26 @@ export default function CaregiverHome() {
           (payload) => {
             console.log('Cambio detectado en pet_member, recargando datos...', payload);
             fetchPendingCount();
+            if (tab === "horario") fetchTodayActivities(); // Recarga horario
             if (tab === "asignadas") fetchAssignedPetsForDashboard();
             if (tab === "reportes") fetchPetsForReports();
           }
       )
-      .on('postgres_changes', // Monitorea 'alert' para actualizar la pestaña de reportes
+      .on('postgres_changes', // Monitorea 'alert'
           { event: '*', schema: 'petcare', table: 'alert'}, 
           (payload) => {
-            console.log('Cambio detectado en alert, recargando reportes...', payload);
+            console.log('Cambio detectado en alert, recargando...', payload);
             if (tab === "reportes") fetchPetsForReports();
+            if (tab === "horario") fetchTodayActivities(); // Recarga horario
+          }
+      )
+      // --- NUEVO LISTENER para activity_log ---
+      .on('postgres_changes', 
+          { event: '*', schema: 'petcare', table: 'activity_log'}, 
+          (payload) => {
+            console.log('Cambio detectado en activity_log, recargando horario y reportes...', payload);
+            if (tab === "horario") fetchTodayActivities(); // Recarga horario
+            if (tab === "reportes") fetchPetsForReports(); // Recarga estado de botones
           }
       )
       .subscribe();
@@ -237,39 +357,50 @@ export default function CaregiverHome() {
     return () => {
       supabase.removeChannel(channel);
     };
-  }, [user, tab, fetchPendingCount, fetchAssignedPetsForDashboard, fetchPetsForReports]); // Depende de user y tab
+  }, [user, tab, fetchPendingCount, fetchTodayActivities, fetchAssignedPetsForDashboard, fetchPetsForReports]);
 
 
-  // --- Event Handlers for Reports Tab ---
+  // --- Event Handlers ---
   const handleCreateReport = (petId, petName) => {
-    navigate(`/caregiver/reportes/crear/${petId}`, { state: { petName } });
+    // Pasa la ruta actual para poder "Volver"
+    navigate(`/caregiver/reportes/crear/${petId}`, { 
+      state: { petName, from: '/caregiver' } 
+    });
   };
   
   const handleViewReport = (petId, petName) => {
-    // Navega usando petId y la fecha de hoy
-    navigate(`/caregiver/reportes/ver/${petId}/${todayDate}`, { state: { petName } });
+    navigate(`/caregiver/reportes/ver/${petId}/${todayDate}`, { 
+      state: { petName, from: '/caregiver' } 
+    });
   };
 
+  // --- NUEVO HANDLER para el botón "Marcar" ---
+  const handleMarkActivity = (petId, petName) => {
+    // Simplemente navega a la página de reporte de esa mascota
+    navigate(`/caregiver/reportes/crear/${petId}`, { 
+      state: { petName, from: '/caregiver' } 
+    });
+  };
 
-  // --- stats ---
+  // --- stats (ahora usa el estado todayStats) ---
   const stats = {
     mascotasACargo: mascotasACargoCount,
-    actividadesCompletadas: 0,
-    totalActividades: 0,
+    actividadesCompletadas: todayStats.completed,
+    totalActividades: todayStats.total,
   };
 
   // --- JSX ---
   return (
     <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 py-8">
       {/* Header y Botón Invitaciones */}
-       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <div>
           <h1 className="text-3xl font-semibold tracking-tight text-gray-900">Dashboard de Cuidador</h1>
           <p className="mt-1 text-gray-500">Gestiona el cuidado de las mascotas asignadas</p>
         </div>
         <button
           className="relative inline-flex items-center gap-2 rounded-xl border px-4 py-2 text-sm font-semibold hover:bg-gray-50"
-          onClick={() => navigate("/caregiver/invitations")} // Asegúrate que esta ruta es correcta
+          onClick={() => navigate("/caregiver/invitations")}
         >
           <span>Invitaciones</span>
           {invitacionesPendientes > 0 && (
@@ -302,14 +433,41 @@ export default function CaregiverHome() {
         />
       </section>
 
-      {/* Pestañas de Navegación (Simplificadas) */}
+      {/* Pestañas de Navegación */}
       <div className="mt-8">
         <Tabs activeTab={tab} setActiveTab={setTab} />
       </div>
 
       {/* Contenido Principal de las Pestañas */}
       <div className="mt-6">
-        {tab === "horario" && ( <EmptyState title="No tienes actividades programadas para hoy." description="Cuando un dueño te asigne una mascota con rutinas, aparecerán aquí." /> )}
+      
+        {/* --- 👇 Contenido "Horario de Hoy" (REHECHO) 👇 --- */}
+        {tab === "horario" && (
+          loadingTodayActivities ? (
+            <div className="text-center py-10 text-gray-500">Cargando horario de hoy...</div>
+          ) : todayActivities.length === 0 ? (
+            <EmptyState 
+              title="No tienes actividades programadas para hoy." 
+              description="Cuando un dueño te asigne una mascota con rutinas, aparecerán aquí." 
+            />
+          ) : (
+            <div className="space-y-3">
+              <h2 className="text-xl font-semibold text-gray-900">Actividades del Día</h2>
+              <p className="text-sm text-gray-500">Marca las actividades completadas para cada mascota.</p>
+              <div className="space-y-2 rounded-lg border border-gray-200 bg-white p-2 shadow-sm">
+                {todayActivities.map((activity) => (
+                  <ActivityRow 
+                    key={activity.alert_id} 
+                    activity={activity} 
+                    onMark={() => handleMarkActivity(activity.pet_id, activity.pet_name)} 
+                  />
+                ))}
+              </div>
+            </div>
+          )
+        )}
+        {/* --- 👆 FIN "Horario de Hoy" 👆 --- */}
+
 
         {/* Contenido de Mascotas Asignadas */}
         {tab === "asignadas" && (
@@ -332,14 +490,13 @@ export default function CaregiverHome() {
 
         {tab === "compartidas" && ( <EmptyState title="Mascotas Compartidas" description="Aquí aparecerán las mascotas que otros dueños te han compartido para su cuidado." /> )}
         
-        {/* 👇 Contenido de la Pestaña "Reportes" (Integrado) 👇 */}
+        {/* Contenido de la Pestaña "Reportes" (Integrado) */}
         {tab === "reportes" && (
           loadingPetsForReports ? (
             <div className="text-center py-10 text-gray-500">Cargando mascotas para reportes...</div>
           ) : petsForReports.length === 0 ? (
             <EmptyState title="No tienes mascotas asignadas." description="Acepta una invitación de dueño para empezar a cuidar una mascota." />
           ) : (
-            // Este es el contenido de Screenshot_7.png
             <div className="space-y-4"> 
               <div className="flex justify-between items-center mb-6">
                 <div>
@@ -364,9 +521,9 @@ export default function CaregiverHome() {
                       />
                     ) : (
                       <div className="h-12 w-12 rounded-full bg-gray-200 flex items-center justify-center text-gray-400 flex-shrink-0">
-                         <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-7 h-7">
-                           <path strokeLinecap="round" strokeLinejoin="round" d="M9.813 15.904L9 18.75l-.75-2.846m.904-2.185l.16-.068A2.25 2.25 0 0112 11.25c.818 0 1.58.322 2.006.852l.16.068m-.16-.068a.75.75 0 11-1.006-1.13l1.006 1.13zM12 9l-3.248-1.53M12 18.75l-3.248-1.53M12 9.75L15.248 8.22M12 18.75l3.248-1.53M3 16.5V6.75A2.25 2.25 0 015.25 4.5h13.5A2.25 2.25 0 0121 6.75v9.75m-18 0V19.5a2.25 2.25 0 002.25 2.25h13.5A2.25 2.25 0 0021 19.5V16.5m-18 0h16.5a2.25 2.25 0 002.25-2.25V6.75a2.25 2.25 0 00-2.25-2.25H3.75A2.25 2.25 0 001.5 6.75v9.75m16.5-1.5H3.75m.75 0l-.008-.008A.75.75 0 013 15.75v-1.5m1.5-1.5H3.75m-.75 0l-.008-.008A.75.75 0 013 12.75v-1.5m1.5-1.5H3.75M.75 8.25h16.5V6.75a.75.75 0 00-.75-.75H1.5a.75.75 0 00-.75.75v1.5zM12 12.75h.008v.008H12v-.008z" />
-                         </svg>
+                          <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-7 h-7">
+                            <path strokeLinecap="round" strokeLinejoin="round" d="M9.813 15.904L9 18.75l-.75-2.846m.904-2.185l.16-.068A2.25 2.25 0 0112 11.25c.818 0 1.58.322 2.006.852l.16.068m-.16-.068a.75.75 0 11-1.006-1.13l1.006 1.13zM12 9l-3.248-1.53M12 18.75l-3.248-1.53M12 9.75L15.248 8.22M12 18.75l3.248-1.53M3 16.5V6.75A2.25 2.25 0 015.25 4.5h13.5A2.25 2.25 0 0121 6.75v9.75m-18 0V19.5a2.25 2.25 0 002.25 2.25h13.5A2.25 2.25 0 0021 19.5V16.5m-18 0h16.5a2.25 2.25 0 002.25-2.25V6.75a2.25 2.25 0 00-2.25-2.25H3.75A2.25 2.25 0 001.5 6.75v9.75m16.5-1.5H3.75m.75 0l-.008-.008A.75.75 0 013 15.75v-1.5m1.5-1.5H3.75m-.75 0l-.008-.008A.75.75 0 013 12.75v-1.5m1.5-1.5H3.75M.75 8.25h16.5V6.75a.75.75 0 00-.75-.75H1.5a.75.75 0 00-.75.75v1.5zM12 12.75h.008v.008H12v-.008z" />
+                          </svg>
                       </div>
                     )}
                     <div>
@@ -378,7 +535,6 @@ export default function CaregiverHome() {
                   <div className="flex flex-col sm:flex-row gap-2">
                     {pet.has_report_for_today ? (
                       <button
-                        // 👇 Navega a la ruta 'ver' con el petId y la fecha de hoy
                         onClick={() => handleViewReport(pet.pet_id, pet.name)}
                         className="rounded-lg border bg-white px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 whitespace-nowrap"
                       >
@@ -396,7 +552,6 @@ export default function CaregiverHome() {
                       onClick={() => handleCreateReport(pet.pet_id, pet.name)}
                       className="rounded-lg bg-black px-3 py-2 text-sm font-medium text-white hover:opacity-90 whitespace-nowrap"
                     >
-                      {/* El texto cambia si ya existe un reporte */}
                       {pet.has_report_for_today ? 'Editar Reporte Hoy' : 'Crear Reporte'}
                     </button>
                   </div>
@@ -405,7 +560,7 @@ export default function CaregiverHome() {
             </div>
           )
         )}
-        {/* 👆 FIN: Contenido Pestaña Reportes 👆 */}
+        {/* FIN: Contenido Pestaña Reportes */}
 
         {/* Muestra el error si existe */}
         {error && <div className="mt-4 text-center text-red-600">Error al cargar datos: {error}</div>}
@@ -433,13 +588,12 @@ function StatCard({ title, value, helper, icon }) {
   );
 }
 
-// 👇 Componente Tabs (Simplificado, ya no navega) 👇
 function Tabs({ activeTab, setActiveTab }) {
   const tabs = [
     { key: "horario", label: "Horario de Hoy" },
     { key: "asignadas", label: "Mascotas Asignadas" },
     { key: "compartidas", label: "Mascotas Compartidas" },
-    { key: "reportes", label: "Reportes" }, // Ahora es solo una pestaña local
+    { key: "reportes", label: "Reportes" }, 
   ];
 
   return (
@@ -447,10 +601,10 @@ function Tabs({ activeTab, setActiveTab }) {
       {tabs.map((tab) => (
         <button
           key={tab.key}
-          onClick={() => setActiveTab(tab.key)} // Solo cambia el estado local
+          onClick={() => setActiveTab(tab.key)} 
           className={`px-3 py-1.5 text-sm font-medium rounded-md transition-colors ${
             activeTab === tab.key
-              ? "bg-gray-800 text-white" // Se marca como activo
+              ? "bg-gray-800 text-white" 
               : "text-gray-600 hover:bg-gray-100"
           }`}
         >
@@ -474,6 +628,44 @@ function EmptyState({ title, description, actionLabel, onAction }) {
           {actionLabel}
         </button>
       )}
+    </div>
+  );
+}
+
+// --- 👇 NUEVO COMPONENTE para la Fila de Actividad 👇 ---
+function ActivityRow({ activity, onMark }) {
+  const isCompleted = activity.is_completed;
+  
+  return (
+    <div 
+      className={`flex items-center justify-between p-3 rounded-lg ${
+        isCompleted ? 'bg-green-50' : 'bg-transparent'
+      }`}
+    >
+      <div className="flex items-center gap-3">
+        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className={`w-5 h-5 ${isCompleted ? 'text-green-600' : 'text-gray-400'}`}>
+          <path strokeLinecap="round" strokeLinejoin="round" d="M12 6v6h4.5m4.5 0a9 9 0 11-18 0 9 9 0 0118 0z" />
+        </svg>
+        <div>
+          <p className={`font-medium ${isCompleted ? 'text-gray-500 line-through' : 'text-gray-800'}`}>
+            {activity.title}
+          </p>
+          <p className={`text-sm ${isCompleted ? 'text-gray-400' : 'text-gray-500'}`}>
+            {activity.time} • {activity.pet_name}
+          </p>
+        </div>
+      </div>
+      <button
+        onClick={onMark}
+        disabled={isCompleted}
+        className={`rounded-lg px-3 py-1.5 text-sm font-semibold transition-colors ${
+          isCompleted
+            ? 'bg-black text-white cursor-default'
+            : 'bg-white text-gray-700 border border-gray-300 hover:bg-gray-50'
+        }`}
+      >
+        {isCompleted ? (activity.status === 'skipped' ? 'Saltado' : 'Completado') : 'Marcar'}
+      </button>
     </div>
   );
 }
