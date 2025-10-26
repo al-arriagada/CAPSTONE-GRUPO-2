@@ -77,6 +77,7 @@ export default function AlertsPopover({ onClose }) {
   const { user } = useAuth();
   const { alerts, loading, fetchAlerts } = useTodayAlerts();
   const [isCompleting, setIsCompleting] = useState(null); // ID de la alerta
+  const [isCancelling, setIsCancelling] = useState(null);
 
   const handleComplete = async (alertId) => {
     setIsCompleting(alertId);
@@ -96,6 +97,23 @@ export default function AlertsPopover({ onClose }) {
     // }
 
     setIsCompleting(null);
+  };
+
+
+  const handleCancel = async (alertId) => {
+    setIsCancelling(alertId); // Indica que está cancelando
+    await supabase
+      .schema('petcare')
+      .from('alert')
+      .update({ status_id: 'cancelled' }) // Cambia el estado
+      .eq('alert_id', alertId);
+
+    await fetchAlerts();  
+    // Avisa a la campanita para que actualice (igual que en completar)
+    window.dispatchEvent(new Event('alertsChanged'));
+    
+    // La lista se actualizará sola por la suscripción en useTodayAlerts
+    // setIsCancelling(null); // No es estrictamente necesario
   };
 
   // --- Lógica para tu maqueta ---
@@ -134,6 +152,8 @@ export default function AlertsPopover({ onClose }) {
               alert={alert} 
               onComplete={handleComplete} 
               isCompleting={isCompleting === alert.alert_id}
+              onCancel={handleCancel}
+              isCancelling={isCancelling === alert.alert_id}
             />
           ))}
         </ul>
@@ -150,7 +170,7 @@ export default function AlertsPopover({ onClose }) {
 }
     
 // --- El Componente de cada Tarea (basado en tu maqueta) ---
-function AlertItem({ alert, onComplete, isCompleting }) {
+function AlertItem({ alert, onComplete, isCompleting, onCancel, isCancelling }) {
   const time = new Date(alert.scheduled_at).toLocaleTimeString('es-CL', { hour: '2-digit', minute: '2-digit' });
   const isOverdue = new Date(alert.scheduled_at) < new Date();
   
@@ -189,11 +209,13 @@ function AlertItem({ alert, onComplete, isCompleting }) {
         >
           ✓ <span>{isCompleting ? 'Completando...' : 'Completar'}</span>
         </button>
-        <button 
+        <button
+          onClick={() => onCancel(alert.alert_id)}
+          disabled={isCompleting || isCancelling} // Deshabilita si está ocupado 
           className="px-2.5 py-1.5 rounded-lg border border-gray-300 text-gray-600 hover:bg-gray-100"
           title="Omitir"
         >
-          ✕
+          {isCancelling ? '...' : '✕'} {/* Muestra feedback */}
         </button>
       </div>
     </li>

@@ -12,6 +12,13 @@ const FREQS = [
   { id: "once", label: "Una sola vez" },
 ];
 
+const WEEKDAYS = [
+  { id: "MO", label: "Lu" }, { id: "TU", label: "Ma" }, { id: "WE", label: "Mi" },
+  { id: "TH", label: "Ju" }, { id: "FR", label: "Vi" }, { id: "SA", label: "Sá" },
+  { id: "SU", label: "Do" },
+];
+
+
 // 1. Aceptar 'routineToEdit'
 export default function NewRoutineModal({ petId, onClose, onCreated, routineToEdit = null }) {
   const { user } = useAuth();
@@ -30,10 +37,14 @@ export default function NewRoutineModal({ petId, onClose, onCreated, routineToEd
   const [active, setActive] = useState(true);
   const [enableAlerts, setEnableAlerts] = useState(true);
   const [freq, setFreq] = useState("daily");
+  const [selectedWeekdays, setSelectedWeekdays] = useState([]);
 
   const [types, setTypes] = useState([]);
   const [saving, setSaving] = useState(false);
   const [err, setErr] = useState("");
+
+
+
 
   // Cargar catálogo de tipos (no cambia)
   useEffect(() => {
@@ -87,19 +98,39 @@ export default function NewRoutineModal({ petId, onClose, onCreated, routineToEd
     }
   }, [isEditMode, routineToEdit]);
 
+
+  const handleWeekdayChange = (dayId) => {
+    setSelectedWeekdays(prev =>
+      prev.includes(dayId)
+        ? prev.filter(d => d !== dayId) // Deseleccionar
+        : [...prev, dayId] // Seleccionar
+    );
+  };
+
   const buildRrule = () => {
     // ... (no cambia) ...
     if (freq === "once") return null;
+    
     let rule = `RRULE:FREQ=${freq.toUpperCase()}`;
+    
+    // Añadir BYDAY si es semanal y hay días seleccionados
+    if (freq === "weekly" && selectedWeekdays.length > 0) {
+      // Ordenar los días (importante para algunas librerías)
+      const orderedDays = WEEKDAYS.map(d => d.id).filter(id => selectedWeekdays.includes(id));
+      rule += `;BYDAY=${orderedDays.join(',')}`;
+    }
+    
+    // Añadir UNTIL si hay fecha de fin
     if (endDate) {
       const [y, m, d] = endDate.split("-").map(Number);
-      const until = new Date(y, m - 1, d, 23, 59, 59);
+      const until = new Date(Date.UTC(y, m - 1, d, 23, 59, 59)); // Fecha en UTC
       const yyyymmdd =
         until.getUTCFullYear().toString().padStart(4, "0") +
         (until.getUTCMonth() + 1).toString().padStart(2, "0") +
         until.getUTCDate().toString().padStart(2, "0");
       rule += `;UNTIL=${yyyymmdd}T235959Z`;
     }
+    
     return rule;
   };
 
@@ -309,13 +340,42 @@ export default function NewRoutineModal({ petId, onClose, onCreated, routineToEd
               <select
                 className="w-full border rounded-lg px-3 py-2 bg-white"
                 value={freq}
-                onChange={(e) => setFreq(e.target.value)}
+                onChange={(e) => {setFreq(e.target.value);
+                  if (e.target.value !=='weekly') setSelectedWeekdays([]) 
+
+                }}
               >
                 {FREQS.map((f) => (
                   <option key={f.id} value={f.id}>{f.label}</option>
                 ))}
               </select>
             </div>
+
+              {/* 6. ⬇️ Mostrar selector de días SOLO si es Semanal */}
+            {freq === 'weekly' && (
+              <div className="pt-2">
+                <label className="block text-sm font-medium mb-2">Repetir los días:</label>
+                <div className="flex flex-wrap gap-2">
+                  {WEEKDAYS.map(day => (
+                    <button
+                      type="button"
+                      key={day.id}
+                      onClick={() => handleWeekdayChange(day.id)}
+                      className={`px-3 py-1.5 border rounded-full text-xs font-medium ${
+                        selectedWeekdays.includes(day.id) 
+                          ? 'bg-black text-white border-black' 
+                          : 'bg-white text-gray-700 hover:bg-gray-50'
+                      }`}
+                    >
+                      {day.label}
+                    </button>
+                  ))}
+                </div>
+                {selectedWeekdays.length === 0 && (
+                  <p className="text-xs text-red-600 mt-1">Selecciona al menos un día.</p>
+                )}
+              </div>
+            )}
 
             <div>
               <label className="block text-sm font-medium mb-1">Hora *</label>
