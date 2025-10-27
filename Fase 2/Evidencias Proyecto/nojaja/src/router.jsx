@@ -97,7 +97,7 @@ const router = createBrowserRouter([
           </ProtectedRoute>
         ),
       },
-      // aquí podrás agregar: citas, historial, etc.
+      // Agregar Citas, historial, etc.
       {
         path: "pets/:id/eventlog",
         element: (
@@ -125,7 +125,7 @@ const router = createBrowserRouter([
         ),
       },
       {
-        path: "invitations", // 👉 /owner/invitations
+        path: "invitations", // owner/invitations
         element: (
           <ProtectedRoute>
             <OwnerInvitations />
