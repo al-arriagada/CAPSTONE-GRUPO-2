@@ -2,11 +2,14 @@
 import React, { useState, useMemo, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "../context/AuthContext.jsx";
-import useMyPets from "../hooks/useMyPets";
-import useAllMyDocuments from "../hooks/useAllMyDocuments";
+import useMyPets from "../hooks/useMyPets.js";
+import useAllMyDocuments from "../hooks/useAllMyDocuments.js";
 import PetCard from "../components/PetCard.jsx";
-import { supabase } from "../supabaseClient";
+import { supabase } from "../supabaseClient.js";
 import AssignedPetCard from "../components/caregiver/AssignedPetCard.jsx";
+import ComplianceCard from "./ComplianceCard.jsx";
+import WalkTrendCard from "./WalkTrendCard.jsx"
+import ActivityIndicatorsCard from './ActivityIndicatorsCard.jsx';
 
 export default function Home() {
   const { user } = useAuth();
@@ -17,6 +20,7 @@ export default function Home() {
   const [upcomingCount, setUpcomingCount] = useState(0);
   const [tab, setTab] = useState("mascotas");
   const [expandedPetId, setExpandedPetId] = useState(null);
+  const [selectedPetFilter, setSelectedPetFilter] = useState('all');
 
   // Estados de invitaciones
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -30,6 +34,16 @@ export default function Home() {
   /* ------------------------------------------------------- */
   /* Citas de la semana */
   /* ------------------------------------------------------- */
+  useEffect(() => {
+    // Si solo hay una mascota, selecciónala por defecto.
+    // Si hay varias o ninguna, deja 'all'.
+    if (pets && pets.length === 1) {
+      setSelectedPetFilter(pets[0].pet_id);
+    } else {
+      setSelectedPetFilter('all'); // O puedes dejarlo en el primero si prefieres
+    }
+  }, [pets]);
+
   useEffect(() => {
     if (!user) return;
 
@@ -385,11 +399,60 @@ export default function Home() {
         )}
 
         {tab === "analisis" && (
-          <EmptyState
-            title="Sin datos suficientes para análisis"
-            actionLabel="Explorar Reportes"
-            onAction={() => alert("Explorar Reportes")}
-          />
+          <div>
+            {/* --- ⬇️ EL SELECTOR DE MASCOTAS ⬇️ --- */}
+            <div className="mb-6 flex items-center gap-4">
+              <label htmlFor="pet-filter-selector" className="text-sm font-medium text-gray-700">
+                Mostrar análisis para:
+              </label>
+              <select
+                id="pet-filter-selector"
+                value={selectedPetFilter}
+                onChange={(e) => setSelectedPetFilter(e.target.value)}
+                className="rounded-md border-gray-300 shadow-sm focus:border-black focus:ring-black sm:text-sm bg-white"
+                disabled={petsLoading || !pets || pets.length === 0}
+              >
+                <option value="all">Todas las Mascotas</option>
+                {/* Opcional: Solo mostrar "Todas" si hay más de una mascota */}
+                {/* {pets && pets.length > 1 && <option value="all">Todas las Mascotas</option>} */}
+                {pets && pets.map((pet) => (
+                  <option key={pet.pet_id} value={pet.pet_id}>
+                    {pet.name}
+                  </option>
+                ))}
+              </select>
+            </div>
+            {/* --- FIN DEL SELECTOR --- */}
+
+
+            {/* --- Renderizado Condicional de Análisis --- */}
+            {petsLoading ? (
+              <p>Cargando mascotas...</p>
+            ) : !pets || pets.length === 0 ? (
+              // Si no hay mascotas
+              <EmptyState
+                title="Registra una mascota para ver análisis."
+                actionLabel="Registrar Mascota"
+                onAction={() => navigate("/app/pets/new")}
+              />
+            ) : selectedPetFilter === 'all' ? (
+              // Si selecciona "Todas" (Mostrar un resumen o mensaje)
+              <div className="rounded-2xl border bg-white p-6 shadow-sm text-center">
+                  <ComplianceCard petId="all" />
+                  <WalkTrendCard petId="all" />
+                  <ActivityIndicatorsCard petId="all" />
+               </div>
+               // O podrías mostrar componentes de análisis agregados aquí
+            ) : (
+              // Si selecciona una mascota específica
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                <ComplianceCard petId={selectedPetFilter} />
+                <WalkTrendCard petId={selectedPetFilter} />
+                <ActivityIndicatorsCard petId={selectedPetFilter} />
+                {/* Añade más tarjetas aquí, pasándoles selectedPetFilter */}
+              </div>
+            )}
+          </div>
         )}
       </div>
 
