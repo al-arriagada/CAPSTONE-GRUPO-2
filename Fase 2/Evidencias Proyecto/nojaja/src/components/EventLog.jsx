@@ -3,6 +3,8 @@ import { supabase } from "../supabaseClient";
 import { useAuth } from "../context/AuthContext";
 import { useParams } from "react-router-dom";
 
+const CHARGE_TYPES = ["routine_check", "vaccine_administered", "medication_dose"];
+
 export default function EventLog({ petId: propPetId }) {
   const { id } = useParams();
   const petId = propPetId || id;
@@ -16,6 +18,7 @@ export default function EventLog({ petId: propPetId }) {
   const [vetsByClinic, setVetsByClinic] = useState([]);
   const [vetsByComuna, setVetsByComuna] = useState([]);
   const [vaccines, setVaccines] = useState([]);
+  const [currencies, setCurrencies] = useState([]);
   const [petSpeciesId, setPetSpeciesId] = useState(null);
 
   const [loading, setLoading] = useState(true);
@@ -23,12 +26,15 @@ export default function EventLog({ petId: propPetId }) {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
 
+  // Modo edición
+  const [editingId, setEditingId] = useState(null);
+
   // Estado para rastrear si ya se cargaron los datos iniciales
   const [initialized, setInitialized] = useState(false);
 
   const [formData, setFormData] = useState({
     e_type_id: "",
-    event_datetime: "", // ← NUEVO: para datetime-local
+    event_datetime: "", // datetime-local
     domicilio: "no",
     region_id: "",
     comuna_id: "",
@@ -40,7 +46,7 @@ export default function EventLog({ petId: propPetId }) {
     distance_m: "",
     vaccine_id: "",
     next_due_date: "",
-    next_dose_datetime: "", // ← NUEVO: para próxima dosis/control
+    next_dose_datetime: "", // próxima dosis/control
     vaccine_batch: "",
     vaccine_dose_number: "",
     vaccine_expiration_date: "",
@@ -48,6 +54,9 @@ export default function EventLog({ petId: propPetId }) {
     clinic_name: "",
     clinic_address: "",
     clinic_phone: "",
+    // NUEVO:
+    charge: "",
+    currency_id: "",
   });
 
   const convertToISO = (datetimeLocal) => {
@@ -93,7 +102,7 @@ export default function EventLog({ petId: propPetId }) {
 
     const initializeData = async () => {
       try {
-        // Cargar tipos de eventos
+        // Tipos de eventos
         const { data: eventTypesData } = await supabase
           .schema("petcare")
           .from("event_type_catalog")
@@ -101,7 +110,7 @@ export default function EventLog({ petId: propPetId }) {
           .order("display_name");
         if (eventTypesData) setEventTypes(eventTypesData);
 
-        // Cargar regiones
+        // Regiones
         const { data: regionsData } = await supabase
           .schema("petcare")
           .from("region")
@@ -109,7 +118,15 @@ export default function EventLog({ petId: propPetId }) {
           .order("name");
         if (regionsData) setRegions(regionsData);
 
-        // Cargar datos de la mascota
+        // Monedas
+        const { data: currenciesData } = await supabase
+          .schema("petcare")
+          .from("currency")
+          .select("currency_id")
+          .order("currency_id");
+        if (currenciesData) setCurrencies(currenciesData);
+
+        // Datos de la mascota → especie
         const { data: petData } = await supabase
           .schema("petcare")
           .from("pet")
@@ -120,7 +137,7 @@ export default function EventLog({ petId: propPetId }) {
         if (petData) {
           setPetSpeciesId(petData.species_id);
 
-          // Cargar vacunas por especie
+          // Vacunas por especie
           const { data: vaccinesData } = await supabase
             .schema("petcare")
             .from("vaccine")
@@ -275,17 +292,16 @@ export default function EventLog({ petId: propPetId }) {
 
     const loadClinicsAndVets = async () => {
       try {
-        // Cargar clínicas
+        // Clínicas
         const { data: cData } = await supabase
           .schema("petcare")
           .from("clinic")
           .select("clinic_id, name, address, phone")
           .eq("comuna_id", formData.comuna_id)
           .order("name");
-
         if (cData) setClinics(cData);
 
-        // Cargar vets por comuna (ahora vet tiene comuna_id directamente)
+        // Vets por comuna
         const { data: vetsData, error: vetsError } = await supabase
           .schema("petcare")
           .from("vet")
@@ -306,7 +322,7 @@ export default function EventLog({ petId: propPetId }) {
 
     loadClinicsAndVets();
 
-    // Limpiar selecciones dependientes
+    // Limpiar dependientes
     setFormData((p) => ({
       ...p,
       clinic_id: "",
@@ -343,7 +359,7 @@ export default function EventLog({ petId: propPetId }) {
           }));
         }
 
-        // Cargar vets de la clínica
+        // Vets de la clínica
         const { data } = await supabase
           .schema("petcare")
           .from("vet")
@@ -394,6 +410,18 @@ export default function EventLog({ petId: propPetId }) {
       }
     }
 
+    // Validación suave de charge/currency
+    if (CHARGE_TYPES.includes(typeId)) {
+      if (formData.charge !== "" && Number(formData.charge) < 0) {
+        setError("El cobro (charge) no puede ser negativo");
+        return;
+      }
+      if (formData.charge && Number(formData.charge) > 0 && !formData.currency_id) {
+        setError("Selecciona una moneda cuando el cobro es mayor a 0");
+        return;
+      }
+    }
+
     try {
       setSaving(true);
 
@@ -402,12 +430,13 @@ export default function EventLog({ petId: propPetId }) {
         throw new Error("No se pudo verificar la sesión del usuario");
       }
 
-      // Crear evento principal
+      // Construir payload del evento
       const eventData = {
         pet_id: petId,
         user_id: authUser.id,
         e_type_id: typeId,
         ts: needsDateTime ? convertToISO(formData.event_datetime) : new Date().toISOString(),
+        details: { "En casa": domicilio }, // ← NUEVO
       };
 
       if (formData.e_description?.trim()) {
@@ -441,20 +470,36 @@ export default function EventLog({ petId: propPetId }) {
         if (formData.distance_m) eventData.distance_m = parseInt(formData.distance_m);
       }
 
-      const { data: inserted, error: insertErr } = await supabase
-        .schema("petcare")
-        .from("event")
-        .insert(eventData)
-        .select("event_id")
-        .single();
+      // NUEVO: charge y currency_id
+      if (CHARGE_TYPES.includes(typeId)) {
+        eventData.charge = formData.charge !== "" ? Number(formData.charge) : null;
+        eventData.currency_id =
+          eventData.charge && eventData.charge > 0 ? (formData.currency_id || null) : null;
+      }
 
-      if (insertErr) throw new Error(insertErr.message || "Error al insertar evento");
-      if (!inserted) throw new Error("No se recibió el evento creado");
+      // INSERT o UPDATE
+      let newEventId = editingId;
+      if (editingId) {
+        const { error: updErr } = await supabase
+          .schema("petcare")
+          .from("event")
+          .update(eventData)
+          .eq("event_id", editingId);
+        if (updErr) throw new Error(updErr.message || "Error al actualizar evento");
+      } else {
+        const { data: inserted, error: insertErr } = await supabase
+          .schema("petcare")
+          .from("event")
+          .insert(eventData)
+          .select("event_id")
+          .single();
+        if (insertErr) throw new Error(insertErr.message || "Error al insertar evento");
+        if (!inserted) throw new Error("No se recibió el evento creado");
+        newEventId = inserted.event_id;
+      }
 
-      const newEventId = inserted.event_id;
-
-      // Manejo de vaccine_event
-      if (typeId === "vaccine_administered") {
+      // Manejo de vaccine_event SOLO en creación (como en tu flujo original)
+      if (!editingId && typeId === "vaccine_administered") {
         if (!formData.vaccine_id) throw new Error("Seleccione la vacuna aplicada");
 
         const vaccineEvent = {
@@ -473,13 +518,14 @@ export default function EventLog({ petId: propPetId }) {
         if (veErr) throw veErr;
       }
 
-      // Crear evento futuro si se ingresó próxima dosis/control
+      // Crear evento futuro si se ingresó próxima dosis/control (igual que tu flujo)
       if (formData.next_dose_datetime && ["medication_dose", "routine_check", "vaccine_administered"].includes(typeId)) {
         const futureEventData = {
           pet_id: petId,
           user_id: authUser.id,
           e_type_id: typeId,
           ts: convertToISO(formData.next_dose_datetime),
+          details: { "En casa": domicilio },
         };
 
         // Copiar datos geográficos y clínica
@@ -487,29 +533,17 @@ export default function EventLog({ petId: propPetId }) {
         if (!domicilio && formData.clinic_id) futureEventData.clinic_id = formData.clinic_id;
         if (formData.vet_id) futureEventData.vet_id = formData.vet_id;
 
-        const { data: futureInserted, error: futureErr } = await supabase
+        // charge/currency también para el futuro si corresponde
+        if (CHARGE_TYPES.includes(typeId)) {
+          const ch = formData.charge !== "" ? Number(formData.charge) : null;
+          futureEventData.charge = ch;
+          futureEventData.currency_id = ch && ch > 0 ? (formData.currency_id || null) : null;
+        }
+
+        await supabase
           .schema("petcare")
           .from("event")
-          .insert(futureEventData)
-          .select("event_id")
-          .single();
-
-        if (futureErr) console.error("Error creando evento futuro:", futureErr);
-
-        // Si es vacuna, crear vaccine_event para el futuro (vacío)
-        if (typeId === "vaccine_administered" && futureInserted) {
-          await supabase
-            .schema("petcare")
-            .from("vaccine_event")
-            .insert({
-              event_id: futureInserted.event_id,
-              vaccine_id: parseInt(formData.vaccine_id),
-              next_due_date: null,
-              vaccine_batch: "",
-              vaccine_dose_number: null,
-              vaccine_expiration_date: null,
-            });
-        }
+          .insert(futureEventData);
       }
 
       // Resetear formulario
@@ -535,7 +569,10 @@ export default function EventLog({ petId: propPetId }) {
         clinic_name: "",
         clinic_address: "",
         clinic_phone: "",
+        charge: "",
+        currency_id: "",
       });
+      setEditingId(null);
       setShowForm(false);
       await loadEvents();
     } catch (err) {
@@ -564,6 +601,73 @@ export default function EventLog({ petId: propPetId }) {
     } catch (err) {
       console.error("Exception deleting event:", err);
       alert("Error al eliminar el evento");
+    }
+  };
+
+  // Cargar evento al formulario para edición
+  const handleEdit = async (ev) => {
+    try {
+      // obtener region de la comuna
+      let regionId = "";
+      if (ev.comuna_id) {
+        const { data: cmn } = await supabase
+          .schema("petcare")
+          .from("comuna")
+          .select("region_id")
+          .eq("comuna_id", ev.comuna_id)
+          .maybeSingle();
+        regionId = cmn?.region_id || "";
+      }
+
+      // preparar cascadas
+      if (regionId) {
+        const { data: cmns } = await supabase
+          .schema("petcare")
+          .from("comuna")
+          .select("comuna_id, name")
+          .eq("region_id", regionId)
+          .order("name");
+        setComunas(cmns || []);
+      }
+      if (ev.comuna_id) {
+        const [{ data: cls }, { data: vtc }, { data: vtc2 }] = await Promise.all([
+          supabase.schema("petcare").from("clinic").select("clinic_id, name, address, phone").eq("comuna_id", ev.comuna_id).order("name"),
+          supabase.schema("petcare").from("vet").select("vet_id, full_name, clinic_id, user_id").eq("comuna_id", ev.comuna_id).order("full_name"),
+          supabase.schema("petcare").from("vet").select("vet_id, full_name").eq("clinic_id", ev.clinic_id || "").order("full_name"),
+        ]);
+        setClinics(cls || []);
+        setVetsByComuna(vtc || []);
+        setVetsByClinic(vtc2 || []);
+      }
+
+      const enCasa = !!(ev?.details?.["En casa"]);
+      setFormData((prev) => ({
+        ...prev,
+        e_type_id: ev.e_type_id || "",
+        event_datetime: ev.ts ? new Date(ev.ts).toISOString().slice(0, 16) : "",
+        domicilio: enCasa ? "si" : "no",
+        region_id: regionId || "",
+        comuna_id: ev.comuna_id || "",
+        clinic_id: enCasa ? "" : (ev.clinic_id || ""),
+        vet_id: enCasa ? "" : (ev.vet_id || ""),
+        e_description: ev.e_description || "",
+        // vaccine fields no los tocamos (se manejan al crear)
+        dose_mg: ev.dose_mg || "",
+        weight_value: ev.var_weight?.value || "",
+        duration_min: ev.duration_min || "",
+        distance_m: ev.distance_m || "",
+        clinic_name: "",
+        clinic_address: "",
+        clinic_phone: "",
+        // NUEVO:
+        charge: ev.charge ?? "",
+        currency_id: ev.currency_id || "",
+      }));
+      setEditingId(ev.event_id);
+      setShowForm(true);
+      window.scrollTo({ top: 0, behavior: "smooth" });
+    } catch (err) {
+      console.error("Error preparando edición:", err);
     }
   };
 
@@ -887,7 +991,39 @@ export default function EventLog({ petId: propPetId }) {
       <div className="flex items-center justify-between mb-6">
         <h3 className="text-xl font-semibold">Historial de Eventos</h3>
         <button
-          onClick={() => setShowForm(!showForm)}
+          onClick={() => {
+            setShowForm(!showForm);
+            if (!showForm) {
+              // abrir formulario en modo creación
+              setEditingId(null);
+              setFormData((p) => ({
+                ...p,
+                e_type_id: "",
+                event_datetime: "",
+                domicilio: "no",
+                region_id: "",
+                comuna_id: "",
+                clinic_id: "",
+                vet_id: "",
+                e_description: "",
+                weight_value: "",
+                duration_min: "",
+                distance_m: "",
+                vaccine_id: "",
+                next_due_date: "",
+                next_dose_datetime: "",
+                vaccine_batch: "",
+                vaccine_dose_number: "",
+                vaccine_expiration_date: "",
+                dose_mg: "",
+                clinic_name: "",
+                clinic_address: "",
+                clinic_phone: "",
+                charge: "",
+                currency_id: "",
+              }));
+            }
+          }}
           className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
         >
           {showForm ? "Cancelar" : "+ Agregar Evento"}
@@ -917,7 +1053,7 @@ export default function EventLog({ petId: propPetId }) {
                 ))}
               </select>
               {["incident_reported", "medication_dose", "routine_check", "vaccine_administered"].includes(formData.e_type_id) && (
-                <div className="md:col-span-2">
+                <div className="md:col-span-2 mt-3">
                   <label className="block text-sm font-medium mb-2">Fecha y hora del evento *</label>
                   <input
                     type="datetime-local"
@@ -937,12 +1073,49 @@ export default function EventLog({ petId: propPetId }) {
             {renderWeightBlock(formData.e_type_id)}
             {renderWalkBlock(formData.e_type_id)}
             {renderDescription()}
+
+            {/* NUEVO: Charge y Currency */}
+            {CHARGE_TYPES.includes(formData.e_type_id) && (
+              <>
+                <div>
+                  <label className="block text-sm font-medium mb-2">Cobro (charge)</label>
+                  <input
+                    type="number"
+                    min="0"
+                    step="0.01"
+                    value={formData.charge || ""}
+                    onChange={(e) => setFormData({ ...formData, charge: e.target.value })}
+                    className="w-full px-3 py-2 border rounded-lg"
+                    placeholder="Ej: 25000"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium mb-2">Moneda (currency_id)</label>
+                  <select
+                    value={formData.currency_id}
+                    onChange={(e) => setFormData({ ...formData, currency_id: e.target.value })}
+                    disabled={!formData.charge || Number(formData.charge) <= 0}
+                    className="w-full px-3 py-2 border rounded-lg bg-white disabled:opacity-50"
+                  >
+                    <option value="">Seleccionar...</option>
+                    {currencies.map((c) => (
+                      <option key={c.currency_id} value={c.currency_id}>
+                        {c.currency_id}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              </>
+            )}
           </div>
 
           <div className="mt-4 flex justify-end gap-2">
             <button
               type="button"
-              onClick={() => setShowForm(false)}
+              onClick={() => {
+                setShowForm(false);
+                setEditingId(null);
+              }}
               className="px-4 py-2 border rounded-lg hover:bg-gray-50"
             >
               Cancelar
@@ -952,7 +1125,7 @@ export default function EventLog({ petId: propPetId }) {
               disabled={saving}
               className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 disabled:opacity-50"
             >
-              {saving ? "Guardando..." : "Guardar Evento"}
+              {saving ? "Guardando..." : (editingId ? "Actualizar Evento" : "Guardar Evento")}
             </button>
           </div>
         </form>
@@ -992,10 +1165,10 @@ export default function EventLog({ petId: propPetId }) {
                     {event.distance_m && <p className="text-gray-700">📏 Distancia: {event.distance_m} m</p>}
                     {event.e_description && <p className="text-gray-700">{event.e_description}</p>}
 
-                    {/* Mostrar información de clínica/vet - priorizar relación sobre details */}
+                    {/* Info clínica/vet / ubicación */}
                     {(event.clinic || event.vet || event.details) && (
                       <div className="mt-2 text-sm text-gray-600 bg-gray-50 p-3 rounded-lg">
-                        {/* Nombre de clínica: priorizar relación clinic */}
+                        {/* Nombre de clínica */}
                         {event.clinic?.name ? (
                           <p className="font-medium">🏥 {event.clinic.name}</p>
                         ) : event.details?.name ? (
@@ -1005,30 +1178,45 @@ export default function EventLog({ petId: propPetId }) {
                         {/* Veterinario */}
                         {event.vet?.full_name && <p>👨‍⚕️ {event.vet.full_name}</p>}
 
-                        {/* Teléfono: priorizar relación clinic */}
+                        {/* Teléfono */}
                         {event.clinic?.phone ? (
                           <p>📞 {event.clinic.phone}</p>
                         ) : event.details?.phone ? (
                           <p>📞 {event.details.phone}</p>
                         ) : null}
 
-                        {/* Dirección: priorizar relación clinic */}
-                        {event.clinic?.address ? (
+                        {/* Dirección o "En casa" */}
+                        {event?.details?.["En casa"] ? (
+                          <p>📍 En casa</p>
+                        ) : event.clinic?.address ? (
                           <p>📍 {event.clinic.address}</p>
                         ) : event.details?.address ? (
                           <p>📍 {event.details.address}</p>
                         ) : null}
                       </div>
                     )}
+
+                    {/* NUEVO: mostrar charge/currency si corresponde */}
+                    {event.charge ? (
+                      <p className="text-gray-700">💵 {event.charge}{event.currency_id ? ` ${event.currency_id}` : ""}</p>
+                    ) : null}
                   </div>
                 </div>
 
-                <button
-                  onClick={() => handleDelete(event.event_id)}
-                  className="ml-4 text-red-600 hover:text-red-800 text-sm"
-                >
-                  Eliminar
-                </button>
+                <div className="flex items-center gap-3 ml-4">
+                  <button
+                    onClick={() => handleEdit(event)}
+                    className="text-blue-600 hover:text-blue-800 text-sm"
+                  >
+                    Editar
+                  </button>
+                  <button
+                    onClick={() => handleDelete(event.event_id)}
+                    className="text-red-600 hover:text-red-800 text-sm"
+                  >
+                    Eliminar
+                  </button>
+                </div>
               </div>
             </div>
           ))
