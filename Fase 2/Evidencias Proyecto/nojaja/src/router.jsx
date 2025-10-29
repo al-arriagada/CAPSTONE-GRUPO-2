@@ -23,6 +23,7 @@ import Invitations from "./components/caregiver/invitations.jsx";
 import OwnerInvitations from "./components/owner/OwnerInvitations.jsx";
 import CreateReportPage from "./components/caregiver/CreateReportPage.jsx";
 import PetDiet from "./components/PetDiet.jsx";
+import ViewReportPage from "./components/caregiver/ViewReportPage.jsx";
 
 const router = createBrowserRouter([
   // Rutas públicas
@@ -227,6 +228,15 @@ const router = createBrowserRouter([
         element: (
           <ProtectedRoute>
             <CreateReportPage />
+          </ProtectedRoute>
+        ),
+      },
+
+      {
+        path: "reportes/ver/:petId/:reportDate", 
+        element: (
+          <ProtectedRoute>
+            <ViewReportPage />
           </ProtectedRoute>
         ),
       },
