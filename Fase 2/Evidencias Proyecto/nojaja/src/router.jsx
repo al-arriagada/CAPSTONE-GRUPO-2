@@ -21,9 +21,8 @@ import PetHealthReport from "./components/PetHealthReport.jsx";
 import CaregiverHome from "./components/caregiver/CaregiverHome.jsx";
 import Invitations from "./components/caregiver/invitations.jsx";
 import OwnerInvitations from "./components/owner/OwnerInvitations.jsx";
-import CreateReportPage from "./components/caregiver/CreateReportPage.jsx"; 
-
-
+import CreateReportPage from "./components/caregiver/CreateReportPage.jsx";
+import PetDiet from "./components/PetDiet.jsx";
 
 const router = createBrowserRouter([
   // Rutas públicas
@@ -97,12 +96,19 @@ const router = createBrowserRouter([
           </ProtectedRoute>
         ),
       },
-      // Agregar Citas, historial, etc.
       {
         path: "pets/:id/eventlog",
         element: (
           <ProtectedRoute>
             <EventoLog /> {/* historial de eventos */}
+          </ProtectedRoute>
+        ),
+      },
+      {
+        path: "pets/:id/diet",
+        element: (
+          <ProtectedRoute>
+            <PetDiet /> {/* gestión de alimentación */}
           </ProtectedRoute>
         ),
       },
@@ -224,8 +230,8 @@ const router = createBrowserRouter([
           </ProtectedRoute>
         ),
       },
-    
-    
+
+
     ],
   },
   // Reset / Update Password
