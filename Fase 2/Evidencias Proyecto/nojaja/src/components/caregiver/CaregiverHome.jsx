@@ -1,387 +1,662 @@
-// src/pages/caregiver/CreateReportPage.jsx
+// src/pages/caregiver/CaregiverHome.jsx
 
 import React, { useState, useEffect, useCallback, useMemo } from "react";
-import { useParams, useNavigate, Link, useLocation } from "react-router-dom";
+import { useNavigate } from "react-router-dom";
 import { useAuth } from "../../context/AuthContext.jsx";
-import { supabase } from "../../supabaseClient.js";
+import { supabase } from "../../supabaseClient";
+import AssignedPetCard from "../../components/caregiver/AssignedPetCard.jsx";
 
-// Helper simple para obtener YYYY-MM-DD
-const getTodayDateString = () => new Date().toISOString().split('T')[0];
-// Helper para combinar fecha y hora (ej: 2025-10-24 y 22:30:00 -> 2025-10-24T22:30:00)
-const combineDateAndTime = (dateStr, timeStr) => {
-    if (!dateStr || !timeStr) return new Date().toISOString(); 
-    const time = timeStr.split(':');
-    const date = new Date(dateStr);
-    date.setHours(parseInt(time[0] || 0, 10), parseInt(time[1] || 0, 10), parseInt(time[2] || 0, 10), 0);
-    return date.toISOString(); 
+// --- HELPER DE FECHA (Versión segura) ---
+const getTodayDateString = () => {
+  const today = new Date();
+  const y = today.getFullYear();
+  const m = String(today.getMonth() + 1).padStart(2, '0');
+  const d = String(today.getDate()).padStart(2, '0');
+  return `${y}-${m}-${d}`; 
+};
+
+// --- HELPER DE RANGO DE FECHA (NUEVO) ---
+const getTodayUTCRange = () => {
+  const start = new Date();
+  start.setHours(0, 0, 0, 0); // Inicio del día local
+  const end = new Date(start);
+  end.setDate(end.getDate() + 1); // Inicio del día siguiente
+  return {
+    startOfDayUTC: start.toISOString(),
+    endOfDayUTC: end.toISOString()
+  };
 };
 
 
-export default function CreateReportPage() {
-  const { petId } = useParams(); 
+export default function CaregiverHome() {
   const { user } = useAuth();
   const navigate = useNavigate();
-  const location = useLocation(); 
-  const petName = location.state?.petName || "Mascota"; 
+  const [tab, setTab] = useState("horario"); // Inicia en 'horario'
+  const [invitacionesPendientes, setInvitacionesPendientes] = useState(0);
+  
+  // Estado para "Mascotas Asignadas"
+  const [assignedPetsForDashboard, setAssignedPetsForDashboard] = useState([]);
+  const [mascotasACargoCount, setMascotasACargoCount] = useState(0);
+  const [loadingAssignedPetsDashboard, setLoadingAssignedPetsDashboard] = useState(true);
+  
+  // Estado para "Reportes"
+  const [petsForReports, setPetsForReports] = useState([]);
+  const [loadingPetsForReports, setLoadingPetsForReports] = useState(true);
 
-  const [routineActivities, setRoutineActivities] = useState([]); // Rutinas del día
-  const [alertDataMap, setAlertDataMap] = useState({}); // Datos de alerts existentes { routine_id: alert_data }
-  const [activityChanges, setActivityChanges] = useState({}); // Cambios hechos por el cuidador { routine_id: changes }
-  const [loading, setLoading] = useState(true);
-  const [saving, setSaving] = useState(false);
-  const [error, setError] = useState(null);
+  // --- ESTADO para "Horario de Hoy" ---
+  const [todayActivities, setTodayActivities] = useState([]);
+  const [loadingTodayActivities, setLoadingTodayActivities] = useState(true);
+  const [todayStats, setTodayStats] = useState({ completed: 0, total: 0 });
+  // ------------------------------------
+
+  const [error, setError] = useState(null); 
   const todayDate = getTodayDateString();
-  const todayStart = `${todayDate}T00:00:00.000Z`;
-  const todayEnd = `${todayDate}T23:59:59.999Z`;
 
-  // --- Cargar Rutinas y Alerts Existentes ---
-  const loadData = useCallback(async () => {
-    if (!user || !petId) return;
-    setLoading(true);
-    setError(null);
-    setActivityChanges({}); 
-    try {
-      // 1. Obtener las rutinas activas para esta mascota
-      const { data: routines, error: routineError } = await supabase
-        .schema("petcare")
-        .from("routine") 
-        .select("routine_id, routine_type_id, time_local, title, description") 
-        .eq("pet_id", petId)
-        .eq("active", true) 
-        .order("time_local", { ascending: true });
+  const caregiverName =
+    user?.user_metadata?.name || user?.email?.split("@")[0] || "Cuidador";
 
-      if (routineError) throw routineError;
-      setRoutineActivities(routines || []);
+  // --- Función para contar invitaciones pendientes ---
+  const fetchPendingCount = useCallback(async () => {
+    if (!user) return;
+    const { count, error } = await supabase
+      .schema("petcare")
+      .from("pet_member")
+      .select(null, { count: "exact", head: true })
+      .eq("member_user_id", user.id)
+      .eq("member_role_id", "caregiver")
+      .eq("status", "pending");
 
-      // 2. Buscar alerts existentes para estas rutinas programados para HOY
-      const routineIds = routines?.map(r => r.routine_id) || [];
-      if (routineIds.length > 0) {
-          const { data: alerts, error: alertError } = await supabase
-              .schema("petcare")
-              .from("alert") 
-              .select("alert_id, routine_id, status_id, notes, completed_at, completed_by") 
-              .in("routine_id", routineIds)
-              .gte("scheduled_at", todayStart) 
-              .lte("scheduled_at", todayEnd);   
-
-          if (alertError) throw alertError;
-
-          // Mapea los alerts por routine_id
-          const alertsMap = (alerts || []).reduce((map, alert) => {
-              map[alert.routine_id] = alert;
-              return map;
-          }, {});
-          setAlertDataMap(alertsMap);
-
-          // Inicializa los cambios locales con los datos existentes
-          const initialChanges = {};
-           for (const routineId in alertsMap) {
-               const alert = alertsMap[routineId];
-               initialChanges[routineId] = {
-                   alert_id: alert.alert_id, 
-                   status: alert.status_id, 
-                   notes: alert.notes || '',
-                   // rating: alert.rating || 0, // <-- ELIMINADO
-                   completed_at: alert.completed_at, 
-                   completed_by: alert.completed_by, 
-               };
-           }
-           setActivityChanges(initialChanges);
-      }
-    } catch (e) {
-      console.error("Error loading report data:", e);
-      setError("No se pudieron cargar los datos del reporte.");
-    } finally {
-      setLoading(false);
+    if (error) {
+      console.error("Error al buscar conteo de invitaciones:", error);
+    } else if (count !== null) {
+      setInvitacionesPendientes(count);
     }
-  }, [user, petId, todayDate, todayStart, todayEnd]); 
+  }, [user]);
 
-  useEffect(() => {
-    loadData();
-  }, [loadData]); 
+  // --- Función para buscar mascotas (Pestaña "Asignadas") ---
+  const fetchAssignedPetsForDashboard = useCallback(async () => {
+      if (!user) {
+        setAssignedPetsForDashboard([]);
+        setMascotasACargoCount(0);
+        setLoadingAssignedPetsDashboard(false);
+        return;
+      }
+      setLoadingAssignedPetsDashboard(true);
+      setError(null); 
+      try {
+          const { data: acceptedMembers, error: membersError } = await supabase
+            .schema("petcare").from("pet_member").select("pet_id")
+            .eq("member_user_id", user.id).eq("member_role_id", "caregiver").eq("status", "accepted");
+          if (membersError) throw membersError;
+          if (!acceptedMembers || acceptedMembers.length === 0) {
+            setAssignedPetsForDashboard([]);
+            setMascotasACargoCount(0);
+            setLoadingAssignedPetsDashboard(false);
+            return;
+          }
+          const petIds = acceptedMembers.map(member => member.pet_id);
 
-  // --- Manejar Cambios en los Logs ---
-  const handleLogChange = (routineId, field, value) => {
-    setActivityChanges(prevChanges => {
-        const currentChange = prevChanges[routineId] || {};
-        const existingAlert = alertDataMap[routineId]; 
+          const { data: petsData, error: petsError } = await supabase
+            .schema("petcare").from("pet")
+            .select(`
+                pet_id, name, breed, birth_date, image_url,
+                species_id, user_id, current_weight, 
+                owner_profile: app_user!user_id ( user_id, full_name )
+            `)
+            .in("pet_id", petIds);
+          if (petsError) throw petsError;
+          if (!petsData) throw new Error("No pet details found for dashboard.");
 
-        // Prepara los nuevos cambios
-        const newChangeData = {
-            ...currentChange,
-            alert_id: currentChange.alert_id || existingAlert?.alert_id, 
-            [field]: value,
-        };
+          const ownerIds = petsData.map(pet => pet.user_id).filter(Boolean);
+          let ownerPhones = {};
+          if (ownerIds.length > 0) {
+            const { data: piiData, error: piiError } = await supabase
+              .schema("petcare").from("user_pii").select("user_id, phone").in("user_id", ownerIds);
+            if (piiError) console.warn("Error fetching owner phones:", piiError);
+            else if (piiData) ownerPhones = piiData.reduce((map, pii) => { map[pii.user_id] = pii.phone; return map; }, {});
+          }
 
-        // Lógica adicional al cambiar el status
-        if (field === 'status') {
-            const completionTimestamp = currentChange.completed_at || existingAlert?.completed_at || new Date().toISOString();
-            const completerId = currentChange.completed_by || existingAlert?.completed_by || user.id;
-
-            if (value === 'completed') {
-                newChangeData.completed_at = completionTimestamp; 
-                newChangeData.completed_by = completerId; 
-                // newChangeData.omission_reason = null; // Si tuvieras esta columna
-            } else if (value === 'omitted' || value === null || value === 'scheduled') { 
-                 newChangeData.completed_at = null;
-                 newChangeData.completed_by = null;
-                 if (value === null || value === 'scheduled') {
-                    newChangeData.notes = currentChange.notes || existingAlert?.notes || ''; 
-                 }
+          const combinedPetsData = petsData.map(pet => ({
+            ...pet,
+            owner: {
+                user_id: pet.owner_profile?.user_id,
+                full_name: pet.owner_profile?.full_name,
+                phone: ownerPhones[pet.user_id] || null
             }
+          }));
+          setAssignedPetsForDashboard(combinedPetsData);
+          setMascotasACargoCount(combinedPetsData.length || 0);
+
+      } catch (errorCatch) {
+          console.error("Error fetching assigned pets for dashboard:", errorCatch);
+          setError(errorCatch.message || "Error cargando mascotas.");
+          setAssignedPetsForDashboard([]);
+          setMascotasACargoCount(0);
+      } finally {
+          setLoadingAssignedPetsDashboard(false);
+      }
+  }, [user]);
+
+  // --- Función para buscar mascotas (Pestaña "Reportes") ---
+  const fetchPetsForReports = useCallback(async () => {
+    if (!user) {
+        setPetsForReports([]);
+        setLoadingPetsForReports(false);
+        return;
+    }
+    setLoadingPetsForReports(true);
+    setError(null);
+    try {
+        const { data: acceptedMembers, error: membersError } = await supabase
+            .schema("petcare")
+            .from("pet_member")
+            .select("pet_id")
+            .eq("member_user_id", user.id)
+            .eq("member_role_id", "caregiver")
+            .eq("status", "accepted");
+
+        if (membersError) throw membersError;
+        if (!acceptedMembers || acceptedMembers.length === 0) {
+            setPetsForReports([]);
+            setLoadingPetsForReports(false);
+            return;
         }
-        
+        const petIds = acceptedMembers.map((member) => member.pet_id);
+
+        const { data: petsData, error: petsError } = await supabase
+            .schema("petcare")
+            .from("pet")
+            .select(
+                `
+                pet_id, name, image_url,
+                owner_profile: app_user!user_id ( full_name )
+                `
+            )
+            .in("pet_id", petIds);
+
+        if (petsError) throw petsError;
+        if (!petsData) throw new Error("No se encontraron detalles de mascotas para reportes.");
+
+        const { data: existingLogs, error: logsError } = await supabase
+            .schema("petcare")
+            .from("activity_log")
+            .select("pet_id")
+            .in("pet_id", petIds)
+            .eq("activity_date", todayDate)
+            .in("status_id", ["completed", "skipped"]);
+
+        let reportsMap = new Set();
+        if (logsError) {
+            console.warn("Error al buscar reportes existentes en 'activity_log':", logsError);
+        } else if (existingLogs) {
+            reportsMap = new Set(existingLogs.map(r => r.pet_id));
+        }
+
+        const petsWithReportStatus = petsData.map(pet => ({
+            ...pet,
+            owner_name: pet.owner_profile?.full_name || 'N/A',
+            has_report_for_today: reportsMap.has(pet.pet_id), 
+        }));
+
+        setPetsForReports(petsWithReportStatus);
+
+    } catch (e) {
+        console.error("Error fetching pets for reports tab:", e);
+        setError(e.message || "Ocurrió un error al cargar las mascotas para reportes.");
+        setPetsForReports([]);
+    } finally {
+        setLoadingPetsForReports(false);
+    }
+  }, [user, todayDate]);
+
+  // --- Función para "Horario de Hoy" ---
+  const fetchTodayActivities = useCallback(async () => {
+    if (!user) {
+      setTodayActivities([]);
+      setLoadingTodayActivities(false);
+      return;
+    }
+    setLoadingTodayActivities(true);
+    setError(null);
+
+    try {
+      // 1. Obtener IDs de mascotas asignadas
+      const { data: acceptedMembers, error: membersError } = await supabase
+        .schema("petcare").from("pet_member").select("pet_id")
+        .eq("member_user_id", user.id)
+        .eq("member_role_id", "caregiver")
+        .eq("status", "accepted");
+
+      if (membersError) throw membersError;
+      if (!acceptedMembers || acceptedMembers.length === 0) {
+        setTodayActivities([]);
+        setTodayStats({ completed: 0, total: 0 });
+        setLoadingTodayActivities(false);
+        return;
+      }
+      const petIds = acceptedMembers.map(member => member.pet_id);
+
+      // 2. Obtener ALERTAS de hoy para todas esas mascotas
+      const { startOfDayUTC, endOfDayUTC } = getTodayUTCRange();
+      const { data: todayAlerts, error: alertError } = await supabase
+        .schema("petcare")
+        .from("alert")
+        .select(`
+          alert_id, 
+          routine_id, 
+          pet_id,
+          title, 
+          status_id, 
+          scheduled_at,
+          pet: pet ( name ),
+          routine: routine ( time_local )
+        `)
+        .in("pet_id", petIds)
+        .gte("scheduled_at", startOfDayUTC)
+        .lt("scheduled_at", endOfDayUTC)
+        .order("scheduled_at", { ascending: true });
+
+      if (alertError) throw alertError;
+
+      // 3. Obtener LOGS de hoy para ver el estado real
+      const todayString = getTodayDateString();
+      const { data: todayLogs, error: logError } = await supabase
+        .schema("petcare")
+        .from("activity_log")
+        .select("routine_id, status_id")
+        .in("pet_id", petIds)
+        .eq("activity_date", todayString);
+
+      if (logError) throw logError;
+      const logMap = new Map((todayLogs || []).map(log => [log.routine_id, log]));
+
+      // 4. Combinar datos
+      const combinedActivities = todayAlerts.map(alert => {
+        const log = logMap.get(alert.routine_id);
+        const finalStatus = log ? log.status_id : alert.status_id;
+        const isCompletedOrSkipped = finalStatus === 'completed' || finalStatus === 'skipped';
+
         return {
-            ...prevChanges,
-            [routineId]: newChangeData
+          alert_id: alert.alert_id,
+          routine_id: alert.routine_id,
+          pet_id: alert.pet_id,
+          title: alert.title,
+          time: alert.routine?.time_local?.substring(0, 5) || alert.scheduled_at.substring(11, 16),
+          pet_name: alert.pet?.name || 'Mascota',
+          is_completed: isCompletedOrSkipped,
+          status: finalStatus
         };
+      });
+
+      setTodayActivities(combinedActivities);
+
+      // 5. Actualizar estadísticas
+      const completedCount = combinedActivities.filter(a => a.is_completed).length;
+      const totalCount = combinedActivities.length;
+      setTodayStats({ completed: completedCount, total: totalCount });
+
+    } catch (e) {
+      console.error("Error fetching today's activities:", e);
+      setError(e.message || "Error al cargar el horario de hoy.");
+      setTodayActivities([]);
+      setTodayStats({ completed: 0, total: 0 });
+    } finally {
+      setLoadingTodayActivities(false);
+    }
+  }, [user]);
+
+  // --- Main useEffect ---
+  useEffect(() => {
+    if (!user) return; 
+
+    fetchPendingCount(); 
+
+    // Carga los datos de la pestaña activa o la de horario si es la inicial
+    if (tab === "horario") {
+      fetchTodayActivities();
+    } else if (tab === "asignadas") {
+      fetchAssignedPetsForDashboard(); 
+    } else if (tab === "reportes") {
+      fetchPetsForReports();
+    }
+    
+    // Carga las stats de hoy si no se ha cargado la pestaña de horario
+    if(tab !== "horario") {
+        fetchTodayActivities(); // Para las Stats Cards
+    }
+    
+    // --- Realtime Subscription ---
+    const channel = supabase.channel('caregiver-dashboard-updates')
+      .on('postgres_changes',
+          { event: '*', schema: 'petcare', table: 'pet_member'},
+          (payload) => {
+            fetchPendingCount();
+            if (tab === "horario") fetchTodayActivities();
+            if (tab === "asignadas") fetchAssignedPetsForDashboard();
+            if (tab === "reportes") fetchPetsForReports();
+          }
+      )
+      .on('postgres_changes',
+          { event: '*', schema: 'petcare', table: 'alert'}, 
+          (payload) => {
+            if (tab === "reportes") fetchPetsForReports();
+            if (tab === "horario") fetchTodayActivities();
+          }
+      )
+      .on('postgres_changes', 
+          { event: '*', schema: 'petcare', table: 'activity_log'}, 
+          (payload) => {
+            if (tab === "horario") fetchTodayActivities();
+            if (tab === "reportes") fetchPetsForReports();
+          }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [user, tab, fetchPendingCount, fetchTodayActivities, fetchAssignedPetsForDashboard, fetchPetsForReports]);
+
+
+  // --- Event Handlers ---
+  const handleCreateReport = (petId, petName) => {
+    navigate(`/caregiver/reportes/crear/${petId}`, { 
+      state: { petName, from: '/caregiver' } 
+    });
+  };
+  
+  const handleViewReport = (petId, petName) => {
+    navigate(`/caregiver/reportes/ver/${petId}/${todayDate}`, { 
+      state: { petName, from: '/caregiver' } 
     });
   };
 
-  // --- Enviar Reporte (Solo actualiza/crea Alerts) ---
-  const handleSubmitReport = async () => {
-     if (!user || !petId) return;
-     setSaving(true);
-     setError(null);
-     try {
-         // 1. Prepara los datos para 'alert' (upsert)
-         const alertUpserts = [];
-         
-         for (const routine of routineActivities) {
-             const routineId = routine.routine_id;
-             const changes = activityChanges[routineId];
-             const existingAlert = alertDataMap[routineId];
+  const handleMarkActivity = (petId, petName) => {
+    navigate(`/caregiver/reportes/crear/${petId}`, { 
+      state: { petName, from: '/caregiver' } 
+    });
+  };
 
-             // Si no hay cambios Y no había un alert existente, no hace nada
-             if (!changes && !existingAlert) continue; 
-             
-             // Si hay cambios (el cuidador interactuó)
-             if (changes) {
-                 // Si el 'status' no es nulo (completado u omitido)
-                 if (changes.status) { 
-                      alertUpserts.push({
-                         alert_id: changes.alert_id || existingAlert?.alert_id || undefined, 
-                         pet_id: petId,
-                         routine_id: routineId,
-                         user_id: user.id, // El cuidador es el 'user_id' de la alerta
-                         title: routine.title,
-                         body: routine.description, // Copia la descripción de la rutina al cuerpo de la alerta
-                         scheduled_at: combineDateAndTime(todayDate, routine.time_local), 
-                         status_id: changes.status, // 'completed' o 'omitted'
-                         notes: changes.notes || null, 
-                         completed_at: changes.status === 'completed' ? (changes.completed_at || new Date().toISOString()) : null,
-                         completed_by: changes.status === 'completed' ? (changes.completed_by || user.id) : null,
-                         updated_at: new Date().toISOString() 
-                         // rating: changes.rating || null, // <-- ELIMINADO
-                     });
-                 } else if (existingAlert) {
-                      // Si el usuario desmarcó una actividad (status: null)
-                      alertUpserts.push({
-                         alert_id: existingAlert.alert_id,
-                         status_id: 'scheduled', // Vuelve a 'scheduled'
-                         notes: null,
-                         completed_at: null,
-                         completed_by: null,
-                         updated_at: new Date().toISOString()
-                         // rating: null // <-- ELIMINADO
-                      });
-                 }
-             }
-         }
-        
-         if (alertUpserts.length > 0) {
-             console.log("Actualizando/Creando alerts:", alertUpserts);
-             const { error: upsertError } = await supabase
-                 .schema("petcare")
-                 .from("alert")
-                 .upsert(alertUpserts, { onConflict: 'alert_id' }); // Actualiza basado en alert_id
-             
-             if (upsertError) throw upsertError;
-         } else {
-             console.log("No hay cambios en los alerts para guardar.");
-         }
-
-         alert("Actividades actualizadas con éxito!");
-         // 👇 CORREGIDO: Navega a la página de ver reporte
-         navigate(`/caregiver/reportes/ver/${petId}/${todayDate}`, { state: { petName } });
-
-     } catch (e) {
-         console.error("Error saving activity logs:", e);
-         setError(`No se pudieron guardar los cambios: ${e.message}`);
-     } finally {
-         setSaving(false);
-     }
+  // --- stats ---
+  const stats = {
+    mascotasACargo: mascotasACargoCount,
+    actividadesCompletadas: todayStats.completed,
+    totalActividades: todayStats.total,
   };
 
   // --- JSX ---
   return (
-    <div className="mx-auto max-w-2xl px-4 sm:px-6 lg:px-8 py-8">
-       <Link
-        to="/caregiver/reportes" // Vuelve a la lista de mascotas para reportar
-        className="inline-flex items-center gap-2 text-sm font-medium text-gray-600 hover:text-gray-900 mb-4"
-      >
-        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="w-5 h-5"><path fillRule="evenodd" d="M12.79 5.23a.75.75 0 01-.02 1.06L8.832 10l3.938 3.71a.75.75 0 11-1.04 1.08l-4.5-4.25a.75.75 0 010-1.08l4.5-4.25a.75.75 0 011.06.02z" clipRule="evenodd" /></svg>
-        Volver
-      </Link>
-
-      <header className="mb-6">
-        <h1 className="text-2xl font-semibold tracking-tight text-gray-900">
-          Registrar Actividades del Día
-        </h1>
-        <p className="mt-1 text-gray-500">
-          Para {petName} • {new Date().toLocaleDateString("es-CL", { dateStyle: 'long' })}
-        </p>
-      </header>
-
-      {loading && <div className="text-center py-10">Cargando rutinas...</div>}
-      {error && <div className="text-center py-10 text-red-600">Error: {error}</div>}
-
-      {!loading && !error && (
-        <div className="space-y-6">
-          
-          {/* Resumen del Día (Calculado dinámicamente) */}
-          <SummaryCard activities={Object.values(activityChanges)} />
-
-          {/* Lista de Actividades */}
-          <h3 className="text-lg font-semibold text-gray-800 border-b pb-2">Detalle de Actividades</h3>
-          {routineActivities.length > 0 ? (
-            routineActivities.map(activity => (
-              <ActivityLogCard 
-                key={activity.routine_id} 
-                activity={activity}
-                // Combina datos del alert original con los cambios actuales
-                log={{ ...(alertDataMap[activity.routine_id] || {}), ...(activityChanges[activity.routine_id] || {}) }} 
-                onChange={handleLogChange} 
-              />
-            ))
-          ) : (
-            <p className="text-gray-500 italic">No hay rutinas programadas para esta mascota hoy.</p>
+    <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 py-8">
+      {/* Header y Botón Invitaciones */}
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+        <div>
+          <h1 className="text-3xl font-semibold tracking-tight text-gray-900">Dashboard de Cuidador</h1>
+          <p className="mt-1 text-gray-500">Gestiona el cuidado de las mascotas asignadas</p>
+        </div>
+        <button
+          className="relative inline-flex items-center gap-2 rounded-xl border px-4 py-2 text-sm font-semibold hover:bg-gray-50"
+          onClick={() => navigate("/caregiver/invitations")}
+        >
+          <span>Invitaciones</span>
+          {invitacionesPendientes > 0 && (
+            <span className="absolute -top-2 -right-2 flex h-5 w-5 items-center justify-center rounded-full bg-red-500 text-xs text-white">
+              {invitacionesPendientes}
+            </span>
           )}
-          
-          {/* Botones de Acción */}
-          <div className="flex justify-end gap-3 pt-4 border-t border-gray-200">
-             <button
-              type="button"
-              onClick={() => navigate("/caregiver/reportes")} // Vuelve a la lista
-              disabled={saving}
-              className="rounded-lg border bg-white px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-50"
-            >
-              Cancelar
-            </button>
-            <button
-              type="button"
-              onClick={handleSubmitReport} // Solo guarda los logs
-              disabled={saving || routineActivities.length === 0} 
-              className="rounded-lg bg-gray-800 px-4 py-2 text-sm font-medium text-white hover:bg-gray-700 disabled:opacity-50"
-            >
-              {saving ? "Guardando..." : "Guardar Cambios"} 
-            </button>
-          </div>
-        </div>
-      )}
-    </div>
-  );
-}
-
-
-/* ----------------------- Helper: ActivityLogCard ----------------------- */
-function ActivityLogCard({ activity, log, onChange }) {
-  // Usa 'status' del estado local 'activityChanges' o 'status_id' de la BD
-  const currentStatus = log?.status || log?.status_id; 
-  const isCompleted = currentStatus === 'completed';
-  const isOmitted = currentStatus === 'omitted';
-  const notes = log?.notes || ''; // Razón de omisión también usa 'notes'
-
-  const handleStatusChange = (newStatus) => {
-    const finalStatus = currentStatus === newStatus ? null : newStatus; 
-    onChange(activity.routine_id, 'status', finalStatus);
-  };
-
-  const getIcon = (type) => {
-    if (type === 'feeding') return '🍲';
-    if (type === 'walking' || type === 'paseo') return '🚶'; 
-    if (type === 'medication') return '💊';
-    if (type === 'training') return '🎓';
-    return '📋'; // 'other' o default
-  }
-
-  return (
-    <div className={`p-4 rounded-lg border ${
-      isCompleted ? 'bg-green-50 border-green-200' : isOmitted ? 'bg-red-50 border-red-200' : 'bg-white'
-    }`}>
-      {/* Encabezado */}
-      <div className="flex items-center justify-between mb-3">
-        <div className="flex items-center gap-2">
-           <span className="text-xl">{getIcon(activity.routine_type_id)}</span>
-           <h4 className="font-semibold text-gray-800">{activity.title || activity.routine_type_id}</h4>
-           <span className="text-sm text-gray-500">({activity.time_local ? activity.time_local.substring(0, 5) : 'N/A'})</span>
-        </div>
-        <div className="flex gap-2">
-           <button title="Completada" onClick={() => handleStatusChange('completed')} className={`p-1 rounded-full ${isCompleted ? 'bg-green-600 text-white ring-2 ring-green-300' : 'bg-gray-200 text-gray-500 hover:bg-green-100'}`}> <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="w-4 h-4"><path fillRule="evenodd" d="M16.704 4.153a.75.75 0 01.143 1.052l-8 10.5a.75.75 0 01-1.127.075l-4.5-4.5a.75.75 0 011.06-1.06l3.894 3.893 7.48-9.817a.75.75 0 011.05-.143z" clipRule="evenodd" /></svg> </button>
-           <button title="Omitida" onClick={() => handleStatusChange('omitted')} className={`p-1 rounded-full ${isOmitted ? 'bg-red-600 text-white ring-2 ring-red-300' : 'bg-gray-200 text-gray-500 hover:bg-red-100'}`}> <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="w-4 h-4"><path d="M6.28 5.22a.75.75 0 00-1.06 1.06L8.94 10l-3.72 3.72a.75.75 0 101.06 1.06L10 11.06l3.72 3.72a.75.75 0 101.06-1.06L11.06 10l3.72-3.72a.75.75 0 00-1.06-1.06L10 8.94 6.28 5.22z" /></svg> </button>
-        </div>
+        </button>
       </div>
 
-      {/* Instrucciones */}
-      {activity.description && <p className="text-sm text-gray-500 mb-2">Instrucciones: {activity.description}</p>}
+      {/* Tarjetas de Estadísticas */}
+      <section className="mt-6 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+        <StatCard
+          title="Mascotas a Cargo"
+          value={stats.mascotasACargo}
+          helper="mascotas activas"
+          icon="🐾"
+        />
+         <StatCard
+          title="Actividades Hoy"
+          value={`${stats.actividadesCompletadas}/${stats.totalActividades}`}
+          helper="completadas"
+          icon="📋"
+        />
+        <StatCard
+          title="Progreso Diario"
+          value={`${stats.totalActividades > 0 ? Math.round((stats.actividadesCompletadas / stats.totalActividades) * 100) : 0}%`}
+          helper="del día completado"
+          icon="🕒"
+        />
+      </section>
 
-      {/* Inputs Completado */}
-      {isCompleted && (
-          <div className="mt-3 space-y-2 border-t pt-3">
-              {/* <StarRating value={log?.rating || 0} onChange={(rating) => onChange(activity.routine_id, 'rating', rating)} /> */}
-              <textarea rows={2} placeholder="Notas (ej: comió bien, paseo corto...)" className="block w-full rounded-md border-gray-300 shadow-sm sm:text-sm" value={notes} onChange={(e) => onChange(activity.routine_id, 'notes', e.target.value)} />
-              {log?.completed_at && <p className="text-xs text-gray-500">Completada: {new Date(log.completed_at).toLocaleString('es-CL', { dateStyle: 'short', timeStyle: 'short'})}</p>}
-          </div>
-      )}
+      {/* Pestañas de Navegación */}
+      <div className="mt-8">
+        <Tabs activeTab={tab} setActiveTab={setTab} />
+      </div>
 
-      {/* Inputs Omitido */}
-       {isOmitted && (
-          <div className="mt-3 border-t pt-3">
-              <textarea rows={2} placeholder="Motivo por el cual se omitió..." className="block w-full rounded-md border-gray-300 shadow-sm sm:text-sm" value={notes} onChange={(e) => onChange(activity.routine_id, 'notes', e.target.value)} />
-          </div>
-       )}
+      {/* Contenido Principal de las Pestañas */}
+      <div className="mt-6">
+      
+        {/* --- Contenido "Horario de Hoy" --- */}
+        {tab === "horario" && (
+          loadingTodayActivities ? (
+            <div className="text-center py-10 text-gray-500">Cargando horario de hoy...</div>
+          ) : todayActivities.length === 0 ? (
+            <EmptyState 
+              title="No tienes actividades programadas para hoy." 
+              description="Cuando un dueño te asigne una mascota con rutinas, aparecerán aquí." 
+            />
+          ) : (
+            <div className="space-y-3">
+              <h2 className="text-xl font-semibold text-gray-900">Actividades del Día</h2>
+              <p className="text-sm text-gray-500">Marca las actividades completadas para cada mascota.</p>
+              <div className="space-y-2 rounded-lg border border-gray-200 bg-white p-2 shadow-sm">
+                {todayActivities.map((activity) => (
+                  <ActivityRow 
+                    key={activity.alert_id} 
+                    activity={activity} 
+                    onMark={() => handleMarkActivity(activity.pet_id, activity.pet_name)} 
+                  />
+                ))}
+              </div>
+            </div>
+          )
+        )}
+
+        {/* Contenido de Mascotas Asignadas */}
+        {tab === "asignadas" && (
+          loadingAssignedPetsDashboard ? (
+            <div className="text-center py-10 text-gray-500">Cargando mascotas asignadas...</div>
+          ) : assignedPetsForDashboard.length === 0 ? (
+            <EmptyState
+              title="Aún no tienes mascotas asignadas."
+              description="Una vez que aceptes una invitación, la mascota aparecerá aquí."
+            />
+          ) : (
+            <div className="grid grid-cols-1 gap-6 md:grid-cols-2 lg:grid-cols-2 xl:grid-cols-3"> 
+              {assignedPetsForDashboard.map((pet) => (
+                <AssignedPetCard key={pet.pet_id} pet={pet} />
+              ))}
+            </div>
+          )
+        )}
+
+        {tab === "compartidas" && ( <EmptyState title="Mascotas Compartidas" description="Aquí aparecerán las mascotas que otros dueños te han compartido para su cuidado." /> )}
+        
+        {/* Contenido de la Pestaña "Reportes" */}
+        {tab === "reportes" && (
+          loadingPetsForReports ? (
+            <div className="text-center py-10 text-gray-500">Cargando mascotas para reportes...</div>
+          ) : petsForReports.length === 0 ? (
+            <EmptyState title="No tienes mascotas asignadas." description="Acepta una invitación de dueño para empezar a cuidar una mascota." />
+          ) : (
+            <div className="space-y-4"> 
+              <div className="flex justify-between items-center mb-6">
+                <div>
+                  <h1 className="text-2xl font-semibold text-gray-900">Reportes de Cuidado</h1>
+                  <p className="mt-1 text-gray-500">
+                    Registra las actividades diarias para los dueños de las mascotas
+                  </p>
+                </div>
+              </div>
+              {petsForReports.map((pet) => (
+                <div
+                  key={pet.pet_id}
+                  className="flex items-center justify-between rounded-lg border bg-white p-4 shadow-sm hover:shadow-md transition-shadow"
+                >
+                  {/* Info Mascota y Dueño */}
+                  <div className="flex items-center space-x-3">
+                    {pet.image_url ? (
+                      <img
+                        src={pet.image_url}
+                        alt={pet.name}
+                        className="h-12 w-12 rounded-full object-cover flex-shrink-0"
+                      />
+                    ) : (
+                      <div className="h-12 w-12 rounded-full bg-gray-200 flex items-center justify-center text-gray-400 flex-shrink-0">
+                          <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-7 h-7">
+                            <path strokeLinecap="round" strokeLinejoin="round" d="M9.813 15.904L9 18.75l-.75-2.846m.904-2.185l.16-.068A2.25 2.25 0 0112 11.25c.818 0 1.58.322 2.006.852l.16.068m-.16-.068a.75.75 0 11-1.006-1.13l1.006 1.13zM12 9l-3.248-1.53M12 18.75l-3.248-1.53M12 9.75L15.248 8.22M12 18.75l3.248-1.53M3 16.5V6.75A2.25 2.25 0 015.25 4.5h13.5A2.25 2.25 0 0121 6.75v9.75m-18 0V19.5a2.25 2.25 0 002.25 2.25h13.5A2.25 2.25 0 0021 19.5V16.5m-18 0h16.5a2.25 2.25 0 002.25-2.25V6.75a2.25 2.25 0 00-2.25-2.25H3.75A2.25 2.25 0 001.5 6.75v9.75m16.5-1.5H3.75m.75 0l-.008-.008A.75.75 0 013 15.75v-1.5m1.5-1.5H3.75m-.75 0l-.008-.008A.75.75 0 013 12.75v-1.5m1.5-1.5H3.75M.75 8.25h16.5V6.75a.75.75 0 00-.75-.75H1.5a.75.75 0 00-.75.75v1.5zM12 12.75h.008v.008H12v-.008z" />
+                          </svg>
+                      </div>
+                    )}
+                    <div>
+                      <p className="font-semibold text-gray-800">{pet.name}</p>
+                      <p className="text-sm text-gray-500">Dueño: {pet.owner_name}</p>
+                    </div>
+                  </div>
+                  {/* Botones de Acción */}
+                  <div className="flex flex-col sm:flex-row gap-2">
+                    {pet.has_report_for_today ? (
+                      <button
+                        onClick={() => handleViewReport(pet.pet_id, pet.name)}
+                        className="rounded-lg border bg-white px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 whitespace-nowrap"
+                      >
+                        Ver Reporte Hoy
+                      </button>
+                    ) : (
+                       <button
+                        className="rounded-lg border bg-white px-3 py-2 text-sm font-medium text-gray-400 cursor-not-allowed whitespace-nowrap"
+                        disabled
+                      >
+                        Ver Reporte Hoy
+                      </button>
+                    )}
+                    <button
+                      onClick={() => handleCreateReport(pet.pet_id, pet.name)}
+                      className="rounded-lg bg-black px-3 py-2 text-sm font-medium text-white hover:opacity-90 whitespace-nowrap"
+                    >
+                      {pet.has_report_for_today ? 'Editar Reporte Hoy' : 'Crear Reporte'}
+                    </button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )
+        )}
+
+        {/* Muestra el error si existe */}
+        {error && <div className="mt-4 text-center text-red-600">Error al cargar datos: {error}</div>}
+      </div>
+
+      <div className="sr-only">Bienvenido, {caregiverName}</div>
     </div>
   );
 }
 
-/* ----------------------- Helper: StarRating (Opcional) ----------------------- */
-// function StarRating({ value, onChange }) { ... }
+// --- Helper Components ---
 
+function StatCard({ title, value, helper, icon }) {
+  return (
+    <div className="rounded-2xl border bg-white p-4 shadow-sm">
+      <div className="flex items-center justify-between">
+        <h3 className="text-sm font-medium text-gray-600">{title}</h3>
+        <span className="text-lg">{icon}</span>
+      </div>
+      <div className="mt-2 flex items-baseline gap-2">
+        <span className="text-3xl font-semibold text-gray-800">{value}</span>
+      </div>
+      <p className="mt-1 text-sm text-gray-500">{helper}</p>
+    </div>
+  );
+}
 
-/* ----------------------- Helper: SummaryCard ----------------------- */
-function SummaryCard({ activities }) {
-    const summary = useMemo(() => {
-        return activities.reduce((acc, log) => {
-             const status = log?.status || log?.status_id;
-             if (status === 'completed') acc.completed++;
-             else if (status === 'omitted') acc.omitted++;
-             return acc;
-         }, { completed: 0, omitted: 0, rescheduled: 0 });
-    }, [activities]);
+function Tabs({ activeTab, setActiveTab }) {
+  const tabs = [
+    { key: "horario", label: "Horario de Hoy" },
+    { key: "asignadas", label: "Mascotas Asignadas" },
+    { key: "compartidas", label: "Mascotas Compartidas" },
+    { key: "reportes", label: "Reportes" }, 
+  ];
 
-    const total = summary.completed + summary.omitted + summary.rescheduled;
-    const completionRate = total > 0 ? Math.round((summary.completed / total) * 100) : 0;
+  return (
+    <div className="flex flex-wrap gap-2 border-b border-gray-200 pb-2">
+      {tabs.map((tab) => (
+        <button
+          key={tab.key}
+          onClick={() => setActiveTab(tab.key)} 
+          className={`px-3 py-1.5 text-sm font-medium rounded-md transition-colors ${
+            activeTab === tab.key
+              ? "bg-gray-800 text-white" 
+              : "text-gray-600 hover:bg-gray-100"
+          }`}
+        >
+          {tab.label}
+        </button>
+      ))}
+    </div>
+  );
+}
 
-    return (
-        <div className="rounded-lg border bg-white p-4 shadow-sm">
-            <h3 className="text-lg font-semibold text-gray-800 mb-2">Resumen del Día 
-                {total > 0 && <span className="ml-2 px-2 py-0.5 text-xs font-medium rounded-full bg-blue-100 text-blue-800">{completionRate}% Cumplimiento</span>}
-            </h3>
-            <p className="text-sm text-gray-500 mb-4">Actividades programadas para hoy</p>
-            <div className="grid grid-cols-3 gap-4 text-center">
-                <div>
-                    <p className="text-3xl font-bold text-green-600">{summary.completed}</p>
-                    <p className="text-xs text-gray-500 uppercase font-semibold">Completadas</p>
-                </div>
-                <div>
-                    <p className="text-3xl font-bold text-red-600">{summary.omitted}</p>
-                    <p className="text-xs text-gray-500 uppercase font-semibold">Omitidas</p>
-                </div>
-                 <div>
-                    <p className="text-3xl font-bold text-gray-600">{summary.rescheduled || 0}</p>
-                    <p className="text-xs text-gray-500 uppercase font-semibold">Reagendadas</p>
-                </div>
-            </div>
+function EmptyState({ title, description, actionLabel, onAction }) {
+  return (
+    <div className="rounded-2xl border-2 border-dashed border-gray-200 bg-white p-12 text-center text-gray-600">
+      <h3 className="text-lg font-semibold text-gray-800">{title}</h3>
+      {description && <p className="mt-2 text-sm">{description}</p>}
+      {actionLabel && onAction && (
+        <button
+          onClick={onAction}
+          className="mt-4 rounded-xl bg-black px-4 py-2 text-sm text-white hover:opacity-90"
+        >
+          {actionLabel}
+        </button>
+      )}
+    </div>
+  );
+}
+
+// --- Componente para la Fila de Actividad ---
+function ActivityRow({ activity, onMark }) {
+  const isCompleted = activity.is_completed;
+  
+  return (
+    <div 
+      className={`flex items-center justify-between p-3 rounded-lg ${
+        isCompleted ? 'bg-green-50' : 'bg-transparent'
+      }`}
+    >
+      <div className="flex items-center gap-3">
+        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className={`w-5 h-5 ${isCompleted ? 'text-green-600' : 'text-gray-400'}`}>
+          <path strokeLinecap="round" strokeLinejoin="round" d="M12 6v6h4.5m4.5 0a9 9 0 11-18 0 9 9 0 0118 0z" />
+        </svg>
+        <div>
+          <p className={`font-medium ${isCompleted ? 'text-gray-500 line-through' : 'text-gray-800'}`}>
+            {activity.title}
+          </p>
+          <p className={`text-sm ${isCompleted ? 'text-gray-400' : 'text-gray-500'}`}>
+            {activity.time} • {activity.pet_name}
+          </p>
         </div>
-    );
+      </div>
+      <button
+        onClick={onMark}
+        disabled={isCompleted}
+        className={`rounded-lg px-3 py-1.5 text-sm font-semibold transition-colors ${
+          isCompleted
+            ? 'bg-black text-white cursor-default'
+            : 'bg-white text-gray-700 border border-gray-300 hover:bg-gray-50'
+        }`}
+      >
+        {isCompleted ? (activity.status === 'skipped' ? 'Saltado' : 'Completado') : 'Marcar'}
+      </button>
+    </div>
+  );
 }
