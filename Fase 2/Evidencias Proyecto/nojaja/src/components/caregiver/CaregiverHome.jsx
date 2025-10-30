@@ -36,7 +36,7 @@ export default function CaregiverHome() {
   
   // Estado para "Mascotas Asignadas"
   const [assignedPetsForDashboard, setAssignedPetsForDashboard] = useState([]);
-  const [mascotasACargoCount, setMascotasACargoCount] = useState(0);
+  const [mascotasACargoCount, setMascotasACargoCount] = useState(0); // <-- El problema está aquí
   const [loadingAssignedPetsDashboard, setLoadingAssignedPetsDashboard] = useState(true);
   
   // Estado para "Reportes"
@@ -50,7 +50,9 @@ export default function CaregiverHome() {
   // ------------------------------------
 
   const [error, setError] = useState(null); 
-  const todayDate = getTodayDateString();
+  
+  // CORRECCIÓN DE LOOP: 'todayDate' ahora es estable
+  const todayDate = useMemo(() => getTodayDateString(), []);
 
   const caregiverName =
     user?.user_metadata?.name || user?.email?.split("@")[0] || "Cuidador";
@@ -77,7 +79,6 @@ export default function CaregiverHome() {
   const fetchAssignedPetsForDashboard = useCallback(async () => {
       if (!user) {
         setAssignedPetsForDashboard([]);
-        setMascotasACargoCount(0);
         setLoadingAssignedPetsDashboard(false);
         return;
       }
@@ -90,7 +91,6 @@ export default function CaregiverHome() {
           if (membersError) throw membersError;
           if (!acceptedMembers || acceptedMembers.length === 0) {
             setAssignedPetsForDashboard([]);
-            setMascotasACargoCount(0);
             setLoadingAssignedPetsDashboard(false);
             return;
           }
@@ -125,17 +125,46 @@ export default function CaregiverHome() {
             }
           }));
           setAssignedPetsForDashboard(combinedPetsData);
-          setMascotasACargoCount(combinedPetsData.length || 0);
+          // --- LÍNEA ELIMINADA --- (ya no es necesario setear el count aquí)
+          // setMascotasACargoCount(combinedPetsData.length || 0); 
 
       } catch (errorCatch) {
           console.error("Error fetching assigned pets for dashboard:", errorCatch);
           setError(errorCatch.message || "Error cargando mascotas.");
           setAssignedPetsForDashboard([]);
-          setMascotasACargoCount(0);
       } finally {
           setLoadingAssignedPetsDashboard(false);
       }
   }, [user]);
+
+  // --- 👇 NUEVA FUNCIÓN SOLO PARA EL CONTADOR ---
+  const fetchMascotasACargoCount = useCallback(async () => {
+    if (!user) {
+      setMascotasACargoCount(0);
+      return;
+    }
+    try {
+      // Consulta ligera que solo pide el conteo
+      const { count, error } = await supabase
+        .schema("petcare")
+        .from("pet_member")
+        .select(null, { count: "exact", head: true }) // Pide solo el conteo
+        .eq("member_user_id", user.id)
+        .eq("member_role_id", "caregiver")
+        .eq("status", "accepted"); // Solo cuenta las aceptadas
+
+      if (error) {
+        console.error("Error fetching pet count:", error);
+        setMascotasACargoCount(0);
+      } else {
+        setMascotasACargoCount(count || 0);
+      }
+    } catch (e) {
+      console.error("Error in fetchMascotasCount:", e);
+      setMascotasACargoCount(0);
+    }
+  }, [user]);
+  // --- 👆 FIN DE LA NUEVA FUNCIÓN ---
 
   // --- Función para buscar mascotas (Pestaña "Reportes") ---
   const fetchPetsForReports = useCallback(async () => {
@@ -259,13 +288,13 @@ export default function CaregiverHome() {
       if (alertError) throw alertError;
 
       // 3. Obtener LOGS de hoy para ver el estado real
-      const todayString = getTodayDateString();
+      // const todayString = getTodayDateString(); // 'todayDate' ya está disponible
       const { data: todayLogs, error: logError } = await supabase
         .schema("petcare")
         .from("activity_log")
         .select("routine_id, status_id")
         .in("pet_id", petIds)
-        .eq("activity_date", todayString);
+        .eq("activity_date", todayDate); // Usa 'todayDate' de useMemo
 
       if (logError) throw logError;
       const logMap = new Map((todayLogs || []).map(log => [log.routine_id, log]));
@@ -303,27 +332,32 @@ export default function CaregiverHome() {
     } finally {
       setLoadingTodayActivities(false);
     }
-  }, [user]);
+  }, [user, todayDate]); // 'todayDate' es estable
 
-  // --- Main useEffect ---
+  // --- Main useEffect (ACTUALIZADO) ---
   useEffect(() => {
     if (!user) return; 
 
+    // --- 👇 LLAMA A TODAS LAS FUNCIONES DE STATS GLOBALES ---
     fetchPendingCount(); 
+    fetchTodayActivities(); // Carga stats de "Actividades Hoy"
+    fetchMascotasACargoCount(); // <-- ¡AÑADIDO! Carga stats de "Mascotas a Cargo"
+    // --------------------------------------------------------
 
-    // Carga los datos de la pestaña activa o la de horario si es la inicial
+    // Carga los datos específicos de la pestaña activa
     if (tab === "horario") {
-      fetchTodayActivities();
+      // (ya se llamó arriba, pero podemos ser explícitos)
+      // fetchTodayActivities(); 
     } else if (tab === "asignadas") {
       fetchAssignedPetsForDashboard(); 
     } else if (tab === "reportes") {
       fetchPetsForReports();
     }
     
-    // Carga las stats de hoy si no se ha cargado la pestaña de horario
-    if(tab !== "horario") {
-        fetchTodayActivities(); // Para las Stats Cards
-    }
+    // --- (Este bloque ya no es necesario) ---
+    // if(tab !== "horario") {
+    //     fetchTodayActivities();
+    // }
     
     // --- Realtime Subscription ---
     const channel = supabase.channel('caregiver-dashboard-updates')
@@ -331,6 +365,7 @@ export default function CaregiverHome() {
           { event: '*', schema: 'petcare', table: 'pet_member'},
           (payload) => {
             fetchPendingCount();
+            fetchMascotasACargoCount(); // Recarga el contador si cambia una membresía
             if (tab === "horario") fetchTodayActivities();
             if (tab === "asignadas") fetchAssignedPetsForDashboard();
             if (tab === "reportes") fetchPetsForReports();
@@ -339,14 +374,14 @@ export default function CaregiverHome() {
       .on('postgres_changes',
           { event: '*', schema: 'petcare', table: 'alert'}, 
           (payload) => {
+            fetchTodayActivities(); // Recarga horario y stats
             if (tab === "reportes") fetchPetsForReports();
-            if (tab === "horario") fetchTodayActivities();
           }
       )
       .on('postgres_changes', 
           { event: '*', schema: 'petcare', table: 'activity_log'}, 
           (payload) => {
-            if (tab === "horario") fetchTodayActivities();
+            fetchTodayActivities(); // Recarga horario y stats
             if (tab === "reportes") fetchPetsForReports();
           }
       )
@@ -355,7 +390,8 @@ export default function CaregiverHome() {
     return () => {
       supabase.removeChannel(channel);
     };
-  }, [user, tab, fetchPendingCount, fetchTodayActivities, fetchAssignedPetsForDashboard, fetchPetsForReports]);
+    // Añade la nueva función al array de dependencias
+  }, [user, tab, fetchPendingCount, fetchTodayActivities, fetchMascotasACargoCount, fetchAssignedPetsForDashboard, fetchPetsForReports]);
 
 
   // --- Event Handlers ---
@@ -379,12 +415,12 @@ export default function CaregiverHome() {
 
   // --- stats ---
   const stats = {
-    mascotasACargo: mascotasACargoCount,
+    mascotasACargo: mascotasACargoCount, // <-- Ahora usará el estado correcto
     actividadesCompletadas: todayStats.completed,
     totalActividades: todayStats.total,
   };
 
-  // --- JSX ---
+  // --- JSX (Sin cambios) ---
   return (
     <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 py-8">
       {/* Header y Botón Invitaciones */}
