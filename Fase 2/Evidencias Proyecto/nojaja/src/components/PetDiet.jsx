@@ -1,4 +1,3 @@
-// src/components/PetDiet.jsx
 import React, { useEffect, useState } from "react";
 import { useParams } from "react-router-dom";
 import { supabase } from "../supabaseClient";
@@ -23,21 +22,31 @@ export default function PetDiet({ petId: propPetId }) {
   });
   const [error, setError] = useState("");
 
-  // Cargar tipos de alimento
+  useEffect(() => {
+    if (user && petId) {
+      console.log("🐶 Pet ID:", petId);
+      console.log("👤 Auth user ID:", user.id);
+    }
+  }, [user, petId]);
+
+  // 🟢 Cargar tipos de alimento
   useEffect(() => {
     if (!user) return;
     (async () => {
       const { data, error } = await supabase
-        .schema("petcare")
         .from("food_type")
         .select("food_type_id, name")
         .order("name");
 
-      if (!error) setFoodTypes(data || []);
+      if (error) {
+        console.error("Error loading food types:", error);
+      } else {
+        setFoodTypes(data || []);
+      }
     })();
   }, [user]);
 
-  // Cargar dietas registradas para la mascota
+  // 🟢 Cargar dietas de la mascota
   useEffect(() => {
     if (!user || !petId) return;
     fetchDiets();
@@ -47,22 +56,20 @@ export default function PetDiet({ petId: propPetId }) {
     setLoading(true);
     try {
       const { data, error } = await supabase
-        .schema("petcare")
         .from("pet_diet")
-        .select(`
-          pet_diet_id,
-          food_type_id,
-          brand,
-          start_date,
-          end_date,
-          price,
-          food_type:food_type_id(name)
-        `)
+        .select("pet_diet_id, food_type_id, brand, start_date, end_date, price")
         .eq("pet_id", petId)
         .order("start_date", { ascending: false });
 
       if (error) throw error;
-      setDiets(data || []);
+
+      // 🔹 Enlazamos el nombre desde el catálogo local cargado previamente
+      const dietsWithNames = (data || []).map((d) => ({
+        ...d,
+        food_type: foodTypes.find((f) => f.food_type_id === d.food_type_id) || {},
+      }));
+
+      setDiets(dietsWithNames);
     } catch (err) {
       console.error("Error cargando dietas:", err);
     } finally {
@@ -70,6 +77,7 @@ export default function PetDiet({ petId: propPetId }) {
     }
   };
 
+  // 🧹 Resetear formulario
   const resetForm = () => {
     setForm({
       food_type_id: "",
@@ -82,11 +90,13 @@ export default function PetDiet({ petId: propPetId }) {
     setEditing(null);
   };
 
+  // 🆕 Abrir modal
   const handleOpenNew = () => {
     resetForm();
     setShowModal(true);
   };
 
+  // ✏️ Editar registro
   const handleEdit = (diet) => {
     setForm({
       food_type_id: diet.food_type_id,
@@ -99,6 +109,7 @@ export default function PetDiet({ petId: propPetId }) {
     setShowModal(true);
   };
 
+  // 💾 Guardar registro (nuevo o editado)
   const handleSave = async (e) => {
     e.preventDefault();
     setError("");
@@ -112,6 +123,7 @@ export default function PetDiet({ petId: propPetId }) {
       setError("Por favor completa todos los campos obligatorios.");
       return;
     }
+
     if (form.price && isNaN(Number(form.price))) {
       setError("El precio debe ser un número válido.");
       return;
@@ -119,9 +131,8 @@ export default function PetDiet({ petId: propPetId }) {
 
     try {
       if (editing) {
-        // Actualizar registro existente
+        // Actualizar
         const { error } = await supabase
-          .schema("petcare")
           .from("pet_diet")
           .update({
             food_type_id: form.food_type_id,
@@ -135,21 +146,18 @@ export default function PetDiet({ petId: propPetId }) {
 
         if (error) throw error;
       } else {
-        // Crear nuevo registro
-        const { error } = await supabase
-          .schema("petcare")
-          .from("pet_diet")
-          .insert([
-            {
-              pet_id: petId,
-              user_id: user.id,
-              food_type_id: form.food_type_id,
-              brand: form.brand.trim(),
-              start_date: form.start_date,
-              end_date: form.end_date || null,
-              price: form.price ? Number(form.price) : null,
-            },
-          ]);
+        // Insertar nuevo
+        const { error } = await supabase.from("pet_diet").insert([
+          {
+            pet_id: petId,
+            user_id: user.id,
+            food_type_id: form.food_type_id,
+            brand: form.brand.trim(),
+            start_date: form.start_date,
+            end_date: form.end_date || null,
+            price: form.price ? Number(form.price) : null,
+          },
+        ]);
 
         if (error) throw error;
       }
@@ -163,12 +171,12 @@ export default function PetDiet({ petId: propPetId }) {
     }
   };
 
+  // ❌ Eliminar registro
   const handleDelete = async (dietId) => {
     if (!window.confirm("¿Seguro que deseas eliminar este registro?")) return;
 
     try {
       const { error } = await supabase
-        .schema("petcare")
         .from("pet_diet")
         .delete()
         .eq("pet_diet_id", dietId)
@@ -228,7 +236,9 @@ export default function PetDiet({ petId: propPetId }) {
                   <td className="px-6 py-3">{d.start_date}</td>
                   <td className="px-6 py-3">{d.end_date || "—"}</td>
                   <td className="px-6 py-3">
-                    {d.price ? `$${Number(d.price).toLocaleString("es-CL")}` : "—"}
+                    {d.price
+                      ? `$${Number(d.price).toLocaleString("es-CL")}`
+                      : "—"}
                   </td>
                   <td className="px-6 py-3 flex gap-2">
                     <button
@@ -251,6 +261,7 @@ export default function PetDiet({ petId: propPetId }) {
         </div>
       )}
 
+      {/* 🧾 Modal de formulario */}
       {showModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
           <form
