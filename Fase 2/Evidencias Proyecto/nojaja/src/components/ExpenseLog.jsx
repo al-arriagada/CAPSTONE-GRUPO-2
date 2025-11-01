@@ -12,7 +12,7 @@ export default function ExpenseLog() {
     const [formData, setFormData] = useState({
         category_id: "",
         amount: "",
-        currency_id: "CLP", // ✅ valor por defecto
+        currency_id: "CLP",
         spent_at: "",
         comuna_id: "",
     });
@@ -27,7 +27,7 @@ export default function ExpenseLog() {
         fetchExpenses();
     }, [user, petId]);
 
-    // 🔹 Cargar categorías
+    // Cargar categorías
     async function loadCategories() {
         const { data, error } = await supabase
             .schema("petcare")
@@ -39,7 +39,7 @@ export default function ExpenseLog() {
         else setCategories(data || []);
     }
 
-    // 🔹 Cargar monedas
+    // Cargar monedas
     async function loadCurrencies() {
         const { data, error } = await supabase
             .schema("petcare")
@@ -51,7 +51,7 @@ export default function ExpenseLog() {
         else setCurrencies(data || []);
     }
 
-    // 🔹 Obtener gastos existentes
+    // Obtener gastos existentes
     async function fetchExpenses() {
         const { data, error } = await supabase
             .schema("petcare")
@@ -74,13 +74,13 @@ export default function ExpenseLog() {
         else setExpenses(data || []);
     }
 
-    // 🔹 Manejar cambios del formulario
+    // Manejar cambios del formulario
     function handleChange(e) {
         const { name, value } = e.target;
         setFormData((prev) => ({ ...prev, [name]: value }));
     }
 
-    // 🔹 Guardar gasto nuevo
+    // Guardar nuevo gasto
     async function handleSubmit(e) {
         e.preventDefault();
 
