@@ -10,6 +10,9 @@ import AssignedPetCard from "../components/caregiver/AssignedPetCard.jsx";
 import ComplianceCard from "./ComplianceCard.jsx";
 import WalkTrendCard from "./WalkTrendCard.jsx"
 import ActivityIndicatorsCard from './ActivityIndicatorsCard.jsx';
+import CaregiverPayCard from './CaregiverPayCard.jsx';
+// Importa el componente de REGISTRO de gastos
+import CaregiverExpensesLog from "./CaregiverExpensesLog.jsx"; 
 
 export default function Home() {
   const { user } = useAuth();
@@ -36,11 +39,10 @@ export default function Home() {
   /* ------------------------------------------------------- */
   useEffect(() => {
     // Si solo hay una mascota, selecciónala por defecto.
-    // Si hay varias o ninguna, deja 'all'.
     if (pets && pets.length === 1) {
       setSelectedPetFilter(pets[0].pet_id);
     } else {
-      setSelectedPetFilter('all'); // O puedes dejarlo en el primero si prefieres
+      setSelectedPetFilter('all'); 
     }
   }, [pets]);
 
@@ -85,7 +87,7 @@ export default function Home() {
     fetchUpcomingAppointments();
   }, [user]);
 
-  // --- NUEVO --- Mascotas compartidas entre dueños
+  // --- Mascotas compartidas entre dueños ---
   const [sharedPets, setSharedPets] = useState([]);
   const [loadingSharedPets, setLoadingSharedPets] = useState(true);
 
@@ -170,7 +172,7 @@ export default function Home() {
 
     fetchSharedPets();
   }, [user]);
-  // --- FIN NUEVO ---
+  // --- FIN Mascotas Compartidas ---
 
 
   /* ------------------------------------------------------- */
@@ -277,7 +279,7 @@ export default function Home() {
   return (
     <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
       {/* Acciones principales */}
-      <div className="flex items-center justify-end gap-3 pt-6">
+      <div className="flex flex-wrap items-center justify-end gap-3 pt-6">
         <button
           className="relative inline-flex items-center gap-2 rounded-xl border px-3 py-2 text-sm hover:bg-gray-50"
           onClick={() => navigate("/owner/invitations")}
@@ -295,6 +297,9 @@ export default function Home() {
         >
           <span>👥</span> Invitar Usuario
         </button>
+        
+        {/* --- 👇 BOTÓN "Registrar Gasto" ELIMINADO --- */}
+
         <button
           className="inline-flex items-center gap-2 rounded-xl bg-black px-3 py-2 text-white text-sm hover:opacity-90"
           onClick={() => navigate("/app/pets/new")}
@@ -346,7 +351,7 @@ export default function Home() {
           )
         )}
 
-        {/* --- NUEVO Apartado Mascotas Compartidas --- */}
+        {/* --- Apartado Mascotas Compartidas --- */}
         {tab === "compartidas" && (
           loadingSharedPets ? (
             <div className="text-center py-10 text-gray-500">Cargando mascotas compartidas...</div>
@@ -398,23 +403,21 @@ export default function Home() {
           )
         )}
 
+        {/* --- Pestaña Análisis (AHORA INCLUYE GASTOS DE CUIDADOR) --- */}
         {tab === "analisis" && (
           <div>
-            {/* --- ⬇️ EL SELECTOR DE MASCOTAS ⬇️ --- */}
             <div className="mb-6 flex items-center gap-4">
-              <label htmlFor="pet-filter-selector" className="text-sm font-medium text-gray-700">
+              <label htmlFor="pet-filter-selector-analisis" className="text-sm font-medium text-gray-700">
                 Mostrar análisis para:
               </label>
               <select
-                id="pet-filter-selector"
+                id="pet-filter-selector-analisis"
                 value={selectedPetFilter}
                 onChange={(e) => setSelectedPetFilter(e.target.value)}
                 className="rounded-md border-gray-300 shadow-sm focus:border-black focus:ring-black sm:text-sm bg-white"
                 disabled={petsLoading || !pets || pets.length === 0}
               >
                 <option value="all">Todas las Mascotas</option>
-                {/* Opcional: Solo mostrar "Todas" si hay más de una mascota */}
-                {/* {pets && pets.length > 1 && <option value="all">Todas las Mascotas</option>} */}
                 {pets && pets.map((pet) => (
                   <option key={pet.pet_id} value={pet.pet_id}>
                     {pet.name}
@@ -422,38 +425,82 @@ export default function Home() {
                 ))}
               </select>
             </div>
-            {/* --- FIN DEL SELECTOR --- */}
 
-
-            {/* --- Renderizado Condicional de Análisis --- */}
             {petsLoading ? (
               <p>Cargando mascotas...</p>
             ) : !pets || pets.length === 0 ? (
-              // Si no hay mascotas
               <EmptyState
                 title="Registra una mascota para ver análisis."
                 actionLabel="Registrar Mascota"
                 onAction={() => navigate("/app/pets/new")}
               />
             ) : selectedPetFilter === 'all' ? (
-              // Si selecciona "Todas" (Mostrar un resumen o mensaje)
-              <div className="rounded-2xl border bg-white p-6 shadow-sm text-center">
+              // Si selecciona "Todas"
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
                   <ComplianceCard petId="all" />
                   <WalkTrendCard petId="all" />
+                  <CaregiverPayCard petId="all" /> {/* <-- Tarjeta de Gastos movida aquí */}
                   <ActivityIndicatorsCard petId="all" />
-               </div>
-               // O podrías mostrar componentes de análisis agregados aquí
+              </div>
             ) : (
               // Si selecciona una mascota específica
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
                 <ComplianceCard petId={selectedPetFilter} />
                 <WalkTrendCard petId={selectedPetFilter} />
+                <CaregiverPayCard petId={selectedPetFilter} /> {/* <-- Tarjeta de Gastos movida aquí */}
                 <ActivityIndicatorsCard petId={selectedPetFilter} />
-                {/* Añade más tarjetas aquí, pasándoles selectedPetFilter */}
               </div>
             )}
           </div>
         )}
+
+        {/* --- Pestaña "Gastos" (AHORA MUESTRA EL REGISTRO) --- */}
+        {tab === "gastos" && (
+          <div>
+            <div className="mb-6 flex items-center gap-4">
+              <label htmlFor="pet-filter-selector-gastos" className="text-sm font-medium text-gray-700">
+                Registrar pago de cuidador para:
+              </label>
+              <select
+                id="pet-filter-selector-gastos"
+                value={selectedPetFilter}
+                onChange={(e) => setSelectedPetFilter(e.target.value)}
+                className="rounded-md border-gray-300 shadow-sm focus:border-black focus:ring-black sm:text-sm bg-white"
+                disabled={petsLoading || !pets || pets.length === 0}
+              >
+                {/* Opción 'Todas' deshabilitada/cambiada para forzar selección */}
+                <option value="all" disabled={pets.length > 0}>
+                  {pets.length > 0 ? "Selecciona una mascota..." : "Primero registra una mascota"}
+                </option>
+                {pets && pets.map((pet) => (
+                  <option key={pet.pet_id} value={pet.pet_id}>
+                    {pet.name}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            {petsLoading ? (
+               <p>Cargando mascotas...</p>
+            ) : !pets || pets.length === 0 ? (
+               <EmptyState
+                title="Registra una mascota para añadir gastos."
+                actionLabel="Registrar Mascota"
+                onAction={() => navigate("/app/pets/new")}
+              />
+            ) : selectedPetFilter === 'all' ? (
+               // Muestra un mensaje pidiendo seleccionar una mascota
+               <div className="rounded-2xl border-2 border-dashed border-gray-200 bg-white p-12 text-center text-gray-600">
+                 <h3 className="text-lg font-semibold text-gray-800">Selecciona una mascota</h3>
+                 <p className="mt-2 text-sm">Elige una mascota del menú superior para registrar el pago de su cuidador.</p>
+               </div>
+            ) : (
+              // Muestra el componente de REGISTRO
+              <CaregiverExpensesLog petId={selectedPetFilter} />
+            )}
+          </div>
+        )}
+        
       </div>
 
       <div className="sr-only">Bienvenido, {ownerName}</div>
@@ -522,6 +569,7 @@ function StatCard({ title, value, helper, icon }) {
   );
 }
 
+// --- Pestaña "Gastos" añadida a la lista ---
 function Tabs({ value, onChange }) {
   const items = [
     { key: "mascotas", label: "Mis Mascotas" },
@@ -529,6 +577,7 @@ function Tabs({ value, onChange }) {
     { key: "citas", label: "Citas" },
     { key: "historial", label: "Historial Médico" },
     { key: "analisis", label: "Análisis" },
+    { key: "gastos", label: "Gastos" }, // <-- AÑADIDO
   ];
   return (
     <div className="flex flex-wrap gap-2">
