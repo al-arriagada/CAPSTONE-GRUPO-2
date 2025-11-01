@@ -106,6 +106,13 @@ export default function PetCard({ pet }) {
           >
             Alimentación
           </Link>
+          <Link
+            to={`/app/pets/${pet_id}/expense`} // nueva vista de alimentación
+            onClick={stop}
+            className="rounded-xl border px-3 py-1.5 text-sm hover:bg-gray-50"
+          >
+            Gastos
+          </Link>
         </div>
       </div>
     </div>

@@ -24,6 +24,7 @@ import OwnerInvitations from "./components/owner/OwnerInvitations.jsx";
 import CreateReportPage from "./components/caregiver/CreateReportPage.jsx";
 import PetDiet from "./components/PetDiet.jsx";
 import ViewReportPage from "./components/caregiver/ViewReportPage.jsx";
+import ExpenseLog from "./components/ExpenseLog.jsx";
 
 const router = createBrowserRouter([
   // Rutas públicas
@@ -110,6 +111,14 @@ const router = createBrowserRouter([
         element: (
           <ProtectedRoute>
             <PetDiet /> {/* gestión de alimentación */}
+          </ProtectedRoute>
+        ),
+      },
+      {
+        path: "pets/:id/expense",
+        element: (
+          <ProtectedRoute>
+            <ExpenseLog /> {/* gestión de gastos */}
           </ProtectedRoute>
         ),
       },
@@ -233,7 +242,7 @@ const router = createBrowserRouter([
       },
 
       {
-        path: "reportes/ver/:petId/:reportDate", 
+        path: "reportes/ver/:petId/:reportDate",
         element: (
           <ProtectedRoute>
             <ViewReportPage />
