@@ -104,7 +104,7 @@ export default function PetCard({ pet }) {
             onClick={stop}
             className="rounded-xl border px-3 py-1.5 text-sm hover:bg-gray-50"
           >
-            Dieta
+            Alimentación
           </Link>
         </div>
       </div>
