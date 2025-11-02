@@ -90,28 +90,21 @@ export default function PetCard({ pet }) {
             onClick={stop}
             className="rounded-xl border px-3 py-1.5 text-sm hover:bg-gray-50"
           >
-            Eventos
-          </Link>
-          <Link
-            to={`/app/pets/${pet_id}/appointments`} // citas
-            onClick={stop}
-            className="rounded-xl border px-3 py-1.5 text-sm hover:bg-gray-50"
-          >
-            Citas
+            Ver eventos
           </Link>
           <Link
             to={`/app/pets/${pet_id}/diet`} // nueva vista de alimentación
             onClick={stop}
             className="rounded-xl border px-3 py-1.5 text-sm hover:bg-gray-50"
           >
-            Dieta
+            Ver alimentación
           </Link>
           <Link
             to={`/app/pets/${pet_id}/expense`} // nueva vista de alimentación
             onClick={stop}
             className="rounded-xl border px-3 py-1.5 text-sm hover:bg-gray-50"
           >
-            Gastos
+            Ver gastos
           </Link>
         </div>
       </div>
