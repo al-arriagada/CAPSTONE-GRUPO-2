@@ -1,9 +1,9 @@
 // src/components/RoutinesPanel.jsx
 import { useEffect, useMemo, useState } from "react";
-import { supabase } from "../supabaseClient";
+import { supabase } from "../supabaseClient.js";
 import { useAuth } from "../context/AuthContext.jsx";
 import NewRoutineModal from "./NewRoutine.jsx";
-import ConfirmDialog from "./ConfirmDialog.jsx"; // ⬅️ 1. Importar
+import ConfirmDialog from "./ConfirmDialog.jsx";
 
 export default function RoutinesPanel({ petId }) {
   const { user } = useAuth();
@@ -12,14 +12,12 @@ export default function RoutinesPanel({ petId }) {
   const [rows, setRows] = useState([]);
   const [error, setError] = useState(null);
 
-  // ⬇️ 2. Estados para manejar los modales
   // 'closed' | 'new' | 'edit'
   const [modalMode, setModalMode] = useState("closed");
   const [selectedRoutine, setSelectedRoutine] = useState(null);
   const [deletingRoutine, setDeletingRoutine] = useState(null);
 
   const fetchRoutines = async () => {
-    // ... (tu función fetchRoutines no cambia) ...
     if (!user?.id || !petId) return;
     setLoading(true);
     setError(null);
@@ -40,7 +38,6 @@ export default function RoutinesPanel({ petId }) {
 
   useEffect(() => {
     fetchRoutines();
-    // ... (tu suscripción de Supabase no cambia) ...
     const channel = supabase
       .channel("routines-ch")
       .on(
@@ -56,13 +53,11 @@ export default function RoutinesPanel({ petId }) {
   }, [user?.id, petId]);
 
   const counts = useMemo(() => {
-    // ... (no cambia) ...
     const act = rows.filter((r) => r.active).length;
     return { active: act, inactive: rows.length - act };
   }, [rows]);
 
   const toggleActive = async (r) => {
-    // ... (no cambia) ...
     const { error } = await supabase
       .schema("petcare")
       .from("routine")
@@ -77,7 +72,7 @@ export default function RoutinesPanel({ petId }) {
     }
   };
 
-  // ⬇️ 3. Lógica de eliminación (ahora separada)
+  //Lógica de eliminación
   const handleRemove = async (r) => {
     if (!r) return;
     const { error } = await supabase
@@ -88,15 +83,14 @@ export default function RoutinesPanel({ petId }) {
     
     if (!error) {
       setRows((prev) => prev.filter((x) => x.routine_id !== r.routine_id));
-      setDeletingRoutine(null); // Cierra el modal
+      setDeletingRoutine(null);
     } else {
-      alert(error.message); // Muestra error si falla
+      alert(error.message);
     }
   };
 
   const timeHHmm = (t) => (t ? t.slice(0, 5) : "—");
   const ruleBadge = (rrule) => {
-    // ... (no cambia) ...
     if (!rrule) return null;
     const upper = rrule.toUpperCase();
     const txt = upper.includes("FREQ=DAILY")
@@ -115,9 +109,7 @@ export default function RoutinesPanel({ petId }) {
 
   return (
     <div className="rounded-2xl border border-slate-200 bg-white">
-      {/* Header */}
       <div className="flex items-center justify-between px-4 sm:px-6 py-4">
-        {/* ... (título y contadores no cambian) ... */}
         <div className="flex items-center gap-3">
           <span className="text-xl">↻</span>
           <div>
@@ -132,10 +124,9 @@ export default function RoutinesPanel({ petId }) {
           <button
             type="button"
             className="rounded-full bg-black text-white px-4 py-2 text-sm"
-            // ⬇️ 4. Cambiar el 'onClick'
             onClick={() => {
-              setSelectedRoutine(null); // Limpia selección
-              setModalMode("new");      // Abre en modo 'new'
+              setSelectedRoutine(null);
+              setModalMode("new");
             }}
           >
             + Nueva
@@ -153,7 +144,6 @@ export default function RoutinesPanel({ petId }) {
       {/* Body */}
       {open && (
         <div className="px-2 sm:px-4 pb-4">
-          {/* ... (estados de loading, error, empty no cambian) ... */}
           {loading && ( <div className="p-4 text-sm text-slate-500">Cargando rutinas…</div> )}
           {error && ( <div className="p-4 text-sm text-red-600">Error: {error}</div> )}
           {!loading && !error && rows.length === 0 && ( <div className="p-4 text-sm text-slate-500">Sin rutinas aún.</div> )}
@@ -164,7 +154,6 @@ export default function RoutinesPanel({ petId }) {
                 key={r.routine_id}
                 className="flex items-center justify-between rounded-xl border px-4 py-3"
               >
-                {/* ... (info de la rutina no cambia) ... */}
                 <div className="flex items-center gap-3">
                   <div className="text-2xl">🍽️</div>
                   <div>
@@ -194,7 +183,7 @@ export default function RoutinesPanel({ petId }) {
                     🔔
                   </button>
 
-                  {/* ⬇️ 5. Cambiar el 'onClick' de Editar */}
+                  {/* Cambiar el 'onClick' de Editar */}
                   <button
                     className="rounded-lg border px-2.5 py-1.5 text-sm text-slate-700"
                     onClick={() => {
@@ -206,7 +195,7 @@ export default function RoutinesPanel({ petId }) {
                     ✏️
                   </button>
 
-                  {/* ⬇️ 6. Cambiar el 'onClick' de Eliminar */}
+                  {/* Cambiar el 'onClick' de Eliminar */}
                   <button
                     className="rounded-lg border px-2.5 py-1.5 text-sm text-red-600 border-red-200"
                     onClick={() => setDeletingRoutine(r)} // Abre el modal de confirm.
@@ -221,7 +210,7 @@ export default function RoutinesPanel({ petId }) {
         </div>
       )}
 
-      {/* ⬇️ 7. Renderizado de Modales */}
+      {/* Renderizado de Modales */}
       
       {/* Modal para Nueva Rutina o Edición */}
       {modalMode !== "closed" && (

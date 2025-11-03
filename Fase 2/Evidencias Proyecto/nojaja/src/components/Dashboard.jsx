@@ -1,6 +1,6 @@
 // src/components/Dashboard.jsx
-import { useAuth } from '../context/AuthContext'
-import { supabase } from '../supabaseClient'
+import { useAuth } from '../context/AuthContext.jsx'
+import { supabase } from '../supabaseClient.js'
 
 export default function Dashboard() {
   const { user } = useAuth()

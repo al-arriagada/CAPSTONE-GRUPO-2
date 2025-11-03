@@ -3,7 +3,7 @@ import { useAuth } from "../context/AuthContext.jsx";
 
 export default function RedirectIfAuth({ children }) {
   const { user, loading } = useAuth();
-  if (loading) return null;               // o un spinner
+  if (loading) return null;
   if (user) return <Navigate to="/app" replace />;
   return children;
 }
