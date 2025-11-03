@@ -5,7 +5,6 @@ import { supabase } from "../supabaseClient.js";
 import { useAuth } from "../context/AuthContext.jsx";
 
 const FREQS = [
-  // ... (no cambia) ...
   { id: "daily", label: "Diaria" },
   { id: "weekly", label: "Semanal" },
   { id: "monthly", label: "Mensual" },
@@ -19,11 +18,10 @@ const WEEKDAYS = [
 ];
 
 
-// 1. Aceptar 'routineToEdit'
 export default function NewRoutineModal({ petId, onClose, onCreated, routineToEdit = null }) {
   const { user } = useAuth();
   
-  // 2. Definir si estamos en modo Edición
+  // Definir si estamos en modo Edición
   const isEditMode = Boolean(routineToEdit);
 
   const [title, setTitle] = useState("");
@@ -46,7 +44,7 @@ export default function NewRoutineModal({ petId, onClose, onCreated, routineToEd
 
 
 
-  // Cargar catálogo de tipos (no cambia)
+  // Cargar catálogo de tipos
   useEffect(() => {
     (async () => {
       const { data, error } = await supabase
@@ -58,7 +56,7 @@ export default function NewRoutineModal({ petId, onClose, onCreated, routineToEd
     })();
   }, []);
 
-  // 3. Rellenar formulario si es modo Edición
+  // Rellenar formulario si es modo Edición
   useEffect(() => {
     if (isEditMode && routineToEdit) {
       setTitle(routineToEdit.title || "");
@@ -108,14 +106,13 @@ export default function NewRoutineModal({ petId, onClose, onCreated, routineToEd
   };
 
   const buildRrule = () => {
-    // ... (no cambia) ...
     if (freq === "once") return null;
     
     let rule = `RRULE:FREQ=${freq.toUpperCase()}`;
     
     // Añadir BYDAY si es semanal y hay días seleccionados
     if (freq === "weekly" && selectedWeekdays.length > 0) {
-      // Ordenar los días (importante para algunas librerías)
+      // Ordenar los días
       const orderedDays = WEEKDAYS.map(d => d.id).filter(id => selectedWeekdays.includes(id));
       rule += `;BYDAY=${orderedDays.join(',')}`;
     }
@@ -151,7 +148,7 @@ export default function NewRoutineModal({ petId, onClose, onCreated, routineToEd
     return dt;
   };
   
-  // 4. Lógica de CREAR (separada)
+  // Lógica de CREAR
   const handleCreate = async () => {
     const rrule = buildRrule();
     const firstAt = nextOccurrence();
@@ -192,7 +189,7 @@ export default function NewRoutineModal({ petId, onClose, onCreated, routineToEd
     }
   };
   
-  // 5. Lógica de ACTUALIZAR (nueva)
+  // Lógica de ACTUALIZAR
   const handleUpdate = async () => {
     const rrule = buildRrule();
     
@@ -229,7 +226,7 @@ export default function NewRoutineModal({ petId, onClose, onCreated, routineToEd
     setSaving(true);
     try {
       let createdNewAlert = false;
-      // 6. Decidir qué lógica ejecutar
+      // Decidir qué lógica ejecutar
       if (isEditMode) {
         await handleUpdate();
       } else {
@@ -262,7 +259,6 @@ export default function NewRoutineModal({ petId, onClose, onCreated, routineToEd
       <div className="absolute inset-0 bg-black/40" onClick={onClose} />
       <div className="relative bg-white rounded-2xl w-full max-w-xl p-6 shadow-xl max-h-[90vh] overflow-y-auto">
         <div className="flex items-start justify-between mb-1">
-          {/* 7. Título dinámico */}
           <h3 className="text-lg font-semibold">
             {isEditMode ? "Editar Rutina" : "Nueva Rutina"}
           </h3>
@@ -275,7 +271,6 @@ export default function NewRoutineModal({ petId, onClose, onCreated, routineToEd
           </button>
         </div>
         
-        {/* 8. Descripción dinámica */}
         <p className="text-sm text-gray-600 mb-4">
           {isEditMode 
             ? "Modifica los detalles de la regla de rutina."
@@ -301,7 +296,6 @@ export default function NewRoutineModal({ petId, onClose, onCreated, routineToEd
             />
           </div>
 
-          {/* 9. Ocultar campos de "Solo Creación" */}
           {!isEditMode && (
             <>
               <div>
@@ -351,7 +345,6 @@ export default function NewRoutineModal({ petId, onClose, onCreated, routineToEd
               </select>
             </div>
 
-              {/* 6. ⬇️ Mostrar selector de días SOLO si es Semanal */}
             {freq === 'weekly' && (
               <div className="pt-2">
                 <label className="block text-sm font-medium mb-2">Repetir los días:</label>
@@ -388,7 +381,6 @@ export default function NewRoutineModal({ petId, onClose, onCreated, routineToEd
               />
             </div>
 
-            {/* 9. Ocultar campos de "Solo Creación" */}
             {!isEditMode && (
               <div>
                 <label className="block text-sm font-medium mb-1">Inicio *</label>
@@ -423,7 +415,6 @@ export default function NewRoutineModal({ petId, onClose, onCreated, routineToEd
               Rutina activa
             </label>
             
-            {/* 9. Ocultar campos de "Solo Creación" */}
             {!isEditMode && (
               <label className="flex items-center gap-2 text-sm">
                 <input
@@ -450,7 +441,6 @@ export default function NewRoutineModal({ petId, onClose, onCreated, routineToEd
               className="px-4 py-2 rounded-lg text-white bg-black hover:bg-gray-800 disabled:opacity-50"
               disabled={saving}
             >
-              {/* 10. Texto de botón dinámico */}
               {saving ? "Guardando…" : (isEditMode ? "Guardar Cambios" : "Crear Rutina")}
             </button>
           </div>
