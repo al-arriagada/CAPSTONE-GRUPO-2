@@ -1,7 +1,7 @@
 // src/components/ComplianceCard.jsx
 import React, { useState, useEffect } from 'react';
 import { supabase } from '../supabaseClient.js';
-import { useAuth } from '../context/AuthContext.jsx'; // ⬅️ 1. Import useAuth
+import { useAuth } from '../context/AuthContext.jsx';
 
 // Define el período a calcular (ej: últimos 7 días)
 const COMPLIANCE_PERIOD_DAYS = 7;
@@ -18,10 +18,8 @@ export default function ComplianceCard({ petId }) { // petId can be UUID or 'all
 
   useEffect(() => {
     const fetchCompliance = async () => {
-      // ⬇️ 3. Need user for 'all' case, or specific petId
       if (!user || !petId) {
         setLoading(false);
-        // Set an appropriate state if prerequisites are missing
         setError(petId ? "Usuario no encontrado." : "Selecciona una mascota o 'Todas'.");
         setComplianceData({ averagePct: null, totalCompleted: 0, totalScheduled: 0 });
         return;
@@ -35,7 +33,6 @@ export default function ComplianceCard({ petId }) { // petId can be UUID or 'all
       const startDateStr = startDate.toISOString().split('T')[0];
 
       try {
-        // --- ⬇️ 4. Build the query dynamically ---
         let query = supabase
           .schema('petcare')
           .from('v_pet_compliance')
@@ -58,11 +55,8 @@ export default function ComplianceCard({ petId }) { // petId can be UUID or 'all
             .gte('scheduled_at', startDate.toISOString()) // Filtra por fecha
             .lte('scheduled_at', new Date().toISOString()); // Hasta ahora
         } else {
-          // Query for a specific pet
-          //console.log(`Fetching compliance for petId: ${petId}`);
           query = query.eq('pet_id', petId);
         }
-        // --- End dynamic query build ---
 
         const { data, error: dbError } = await query;
 
@@ -71,7 +65,6 @@ export default function ComplianceCard({ petId }) { // petId can be UUID or 'all
         if (!data || data.length === 0) {
           setComplianceData({ averagePct: null, totalCompleted: 0, totalScheduled: 0 });
         } else {
-            // --- ⬇️ Lógica de Agregación (si consultaste 'alert') ⬇️ ---
           if (petId === 'all') {
              const totals = data.reduce((acc, alert) => {
                 // Cuenta todas las que debieron completarse (ajusta según tu lógica de 'scheduled_cnt')
@@ -108,7 +101,6 @@ export default function ComplianceCard({ petId }) { // petId can be UUID or 'all
     };
 
     fetchCompliance();
-    // ⬇️ 6. Add 'user' to dependencies
   }, [petId, user]);
 
   const { averagePct, totalCompleted, totalScheduled } = complianceData;
@@ -118,7 +110,6 @@ export default function ComplianceCard({ petId }) { // petId can be UUID or 'all
   if (error) { /* ... */ }
   if (!loading && !error && (averagePct === null || totalScheduled === 0)) { /* ... */ }
 
-  // ⬇️ 7. Dynamic Title
   const cardTitle = petId === 'all'
     ? `Cumplimiento General (${COMPLIANCE_PERIOD_DAYS} días)`
     : `Cumplimiento (${COMPLIANCE_PERIOD_DAYS} días)`;
@@ -145,7 +136,7 @@ export default function ComplianceCard({ petId }) { // petId can be UUID or 'all
   );
 }
 
-// Loading state component (optional)
+// Loading state component
 const LoadingState = () => (
   <div className="p-4 border rounded-lg bg-white text-center text-gray-500">Cargando cumplimiento...</div>
 );
