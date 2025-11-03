@@ -1,7 +1,6 @@
 // src/components/ConfirmDialog.jsx
 import React from "react";
 
-// Este es el mismo componente que tenías en PetDetail.jsx
 export default function ConfirmDialog({
   open,
   title = "Confirmar acción",
