@@ -12,7 +12,8 @@ import WalkTrendCard from "./WalkTrendCard.jsx"
 import ActivityIndicatorsCard from './ActivityIndicatorsCard.jsx';
 import CaregiverPayCard from './CaregiverPayCard.jsx';
 // Importa el componente de REGISTRO de gastos
-import CaregiverExpensesLog from "./CaregiverExpensesLog.jsx"; 
+import CaregiverExpensesLog from "./CaregiverExpensesLog.jsx";
+import PetExpensesChart from "./PetExpensesChart.jsx";
 
 export default function Home() {
   const { user } = useAuth();
@@ -42,7 +43,7 @@ export default function Home() {
     if (pets && pets.length === 1) {
       setSelectedPetFilter(pets[0].pet_id);
     } else {
-      setSelectedPetFilter('all'); 
+      setSelectedPetFilter('all');
     }
   }, [pets]);
 
@@ -297,7 +298,7 @@ export default function Home() {
         >
           <span>👥</span> Invitar Usuario
         </button>
-        
+
         {/* --- 👇 BOTÓN "Registrar Gasto" ELIMINADO --- */}
 
         <button
@@ -437,10 +438,10 @@ export default function Home() {
             ) : selectedPetFilter === 'all' ? (
               // Si selecciona "Todas"
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                  <ComplianceCard petId="all" />
-                  <WalkTrendCard petId="all" />
-                  <CaregiverPayCard petId="all" /> {/* <-- Tarjeta de Gastos movida aquí */}
-                  <ActivityIndicatorsCard petId="all" />
+                <ComplianceCard petId="all" />
+                <WalkTrendCard petId="all" />
+                <CaregiverPayCard petId="all" /> {/* <-- Tarjeta de Gastos movida aquí */}
+                <ActivityIndicatorsCard petId="all" />
               </div>
             ) : (
               // Si selecciona una mascota específica
@@ -451,6 +452,13 @@ export default function Home() {
                 <ActivityIndicatorsCard petId={selectedPetFilter} />
               </div>
             )}
+          </div>
+        )}
+
+        {/* --- NUEVO TAB: Análisis de Gastos --- */}
+        {tab === "analisisGastos" && (
+          <div className="mt-4">
+            <PetExpensesChart userId={user?.id} />
           </div>
         )}
 
@@ -481,26 +489,26 @@ export default function Home() {
             </div>
 
             {petsLoading ? (
-               <p>Cargando mascotas...</p>
+              <p>Cargando mascotas...</p>
             ) : !pets || pets.length === 0 ? (
-               <EmptyState
+              <EmptyState
                 title="Registra una mascota para añadir gastos."
                 actionLabel="Registrar Mascota"
                 onAction={() => navigate("/app/pets/new")}
               />
             ) : selectedPetFilter === 'all' ? (
-               // Muestra un mensaje pidiendo seleccionar una mascota
-               <div className="rounded-2xl border-2 border-dashed border-gray-200 bg-white p-12 text-center text-gray-600">
-                 <h3 className="text-lg font-semibold text-gray-800">Selecciona una mascota</h3>
-                 <p className="mt-2 text-sm">Elige una mascota del menú superior para registrar el pago de su cuidador.</p>
-               </div>
+              // Muestra un mensaje pidiendo seleccionar una mascota
+              <div className="rounded-2xl border-2 border-dashed border-gray-200 bg-white p-12 text-center text-gray-600">
+                <h3 className="text-lg font-semibold text-gray-800">Selecciona una mascota</h3>
+                <p className="mt-2 text-sm">Elige una mascota del menú superior para registrar el pago de su cuidador.</p>
+              </div>
             ) : (
               // Muestra el componente de REGISTRO
               <CaregiverExpensesLog petId={selectedPetFilter} />
             )}
           </div>
         )}
-        
+
       </div>
 
       <div className="sr-only">Bienvenido, {ownerName}</div>
@@ -577,6 +585,7 @@ function Tabs({ value, onChange }) {
     { key: "citas", label: "Citas" },
     { key: "historial", label: "Historial Médico" },
     { key: "analisis", label: "Análisis" },
+    { key: "analisisGastos", label: "Análisis de Gastos" },
     { key: "gastos", label: "Gastos" }, // <-- AÑADIDO
   ];
   return (
