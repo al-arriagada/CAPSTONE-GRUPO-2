@@ -64,64 +64,71 @@ export default function Navbar() {
           </Link>
         </div>
 
-        {/* Center: links (ocultos en mobile) */}
+        {/* Center: links (ocultos en mobile) 
         <div className="hidden items-center gap-4 md:flex">
-          {/* Enlaces Owner */}
+
           {user && !loadingRole && role === "owner" && (
             <NavItem to="/app">Dashboard</NavItem>
-            /* Puedes añadir más NavItems para owner aquí */
+
           )}
-          {/* Enlaces Vet */}
+
           {user && !loadingRole && role === "vet" && (
             <NavItem to="/vet">Pacientes</NavItem>
-            /* Puedes añadir más NavItems para vet aquí */
+
           )}
-          {/* --- 👇 AÑADIDO: Enlaces para Caregiver --- */}
+
           {user && !loadingRole && role === "caregiver" && (
             <>
-              {/* Ejemplo: Si quieres un enlace a la home del cuidador */}
+              /* Ejemplo: Si quieres un enlace a la home del cuidador 
               <NavItem to="/caregiver">Dashboard</NavItem>
-              {/* Ejemplo: <NavItem to="/caregiver/invitations">Invitaciones</NavItem> */}
-              {/* Añade aquí los enlaces principales que necesite el cuidador */}
+              /* Ejemplo: <NavItem to="/caregiver/invitations">Invitaciones</NavItem> 
+              /* Añade aquí los enlaces principales que necesite el cuidador 
             </>
           )}
         </div>
+        */}
 
         {/* Right: auth actions */}
-        <div className="hidden items-center gap-2 md:flex">
-          {/* Bloque Notificaciones (sin cambios funcionales) */}
-          <div className="relative" ref={popoverRef}>
-            <button
-              onClick={() => setIsPopoverOpen(prev => !prev)}
-              className="relative inline-flex items-center justify-center p-2 rounded-full text-slate-600 hover:text-slate-900 hover:bg-slate-100 focus:outline-none focus:ring-2 focus:ring-black/20"
-            >
-              <span className="h-5 w-5" aria-hidden="true"> <FaRegBell/> </span>
-              {!loadingAlerts && count > 0 && (
-                <span className="absolute top-0 right-0 -translate-y-1/3 translate-x-1/3 inline-flex h-[18px] min-w-[18px] items-center justify-center rounded-full bg-black px-1 text-[10px] font-semibold text-white ring-2 ring-white">
-                  {count}
-                </span>
-              )}
-            </button>
-            {isPopoverOpen && (
-              <AlertsPopover onClose={() => setIsPopoverOpen(false)} />
-            )}
-          </div>
-          {/* Fin Notificaciones */}
+<div className="hidden items-center gap-2 md:flex">
 
           {/* Menú Usuario / Login/Signup */}
           {loading || loadingRole ? ( // Muestra carga si auth o rol están cargando
             <div className="h-8 w-24 animate-pulse rounded-md bg-gray-200" />
           ) : user ? (
-            <UserMenu
-              user={user}
-              name={displayName}
-              avatarPath={profile?.avatar_url}
-              loadingName={loadingProfile}
-              onLogout={handleLogout}
-              avatarTo={profilePath} // <-- Usa profilePath dinámico
-            />
+            <>
+              {/* ⬇️ --- AQUÍ VA LA CAMPANITA --- ⬇️ */}
+              {/* Mueve el bloque de notificaciones aquí dentro */}
+              <div className="relative" ref={popoverRef}>
+                <button
+                  onClick={() => setIsPopoverOpen(prev => !prev)}
+                  className="relative inline-flex items-center justify-center p-2 rounded-full text-slate-600 hover:text-slate-900 hover:bg-slate-100 focus:outline-none focus:ring-2 focus:ring-black/20"
+                >
+                  <span className="h-5 w-5" aria-hidden="true"> <FaRegBell/> </span>
+                  {!loadingAlerts && count > 0 && (
+                    <span className="absolute top-0 right-0 -translate-y-1/3 translate-x-1/3 inline-flex h-[18px] min-w-[18px] items-center justify-center rounded-full bg-black px-1 text-[10px] font-semibold text-white ring-2 ring-white">
+                      {count}
+                    </span>
+                  )}
+                </button>
+                {isPopoverOpen && (
+                  <AlertsPopover onClose={() => setIsPopoverOpen(false)} />
+                )}
+              </div>
+
+
+              {/* El resto de tu menú de usuario */}
+              <UserMenu
+                user={user}
+                name={displayName}
+                avatarPath={profile?.avatar_url}
+                loadingName={loadingProfile}
+                onLogout={handleLogout}
+                avatarTo={profilePath} // <-- Usa profilePath dinámico
+              />
+            </>
           ) : (
             <>
+              {/* La campanita ya no está aquí */}
               <Link to="/signin" className="rounded-xl border px-3 py-1.5 text-sm hover:bg-gray-50">
                 Iniciar sesión
               </Link>
