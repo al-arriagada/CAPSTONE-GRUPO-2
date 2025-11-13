@@ -1,6 +1,6 @@
-import Carousel from "./Carousel";
-import preview from "../assets/perritohd.png";
-import prev2 from "../assets/gatohd.png"
+import Carousel from "./Carousel.jsx";
+import preview from "../assets/razas-de-perros-rottweiler.jpeg";
+import prev2 from "../assets/gato_siames_thai.jpg"
 import { Link } from "react-router-dom";
 import { useAuth } from "../context/AuthContext.jsx";
 
@@ -56,8 +56,6 @@ export default function HomePublic() {
             <Carousel
               images={
               [preview,prev2]}
-              fit="cover"
-              position="center"
               interval={5000}
               alt="preview"
               

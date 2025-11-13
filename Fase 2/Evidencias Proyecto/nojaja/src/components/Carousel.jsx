@@ -1,7 +1,7 @@
 // src/components/Carousel.jsx
 import React, { useEffect, useRef, useState } from "react";
 
-export default function Carousel({ images = [], interval = 5000, alt = "slide" }) {
+export default function Carousel({ images = [], interval = 5000, alt = "slide", fit= "cover", position="center" }) {
   const [i, setI] = useState(0);
   const timerRef = useRef(null);
   const touchX = useRef(null);
@@ -35,6 +35,7 @@ export default function Carousel({ images = [], interval = 5000, alt = "slide" }
     touchX.current = null;
   };
 
+
   // Fallback si no hay imágenes
   if (!hasImages) {
     return (
@@ -62,7 +63,7 @@ export default function Carousel({ images = [], interval = 5000, alt = "slide" }
         <img
         src={src}
         alt={`preview ${idx + 1}`}
-        className="block h-full w-full object-cover"
+        className="block object-contain max-h-full max-w-full"
         loading={idx === 0 ? "eager" : "lazy"}          // ⬅️ 1ª imagen sin lazy
         onError={(e) => {                               // ⬅️ fallback si falla
             console.warn("No cargó la imagen:", src);
