@@ -43,6 +43,7 @@ export default function PetDetail() {
   const [clinics, setClinics] = useState([]);
   const [vetsByClinic, setVetsByClinic] = useState([]);
   const [vetsByComuna, setVetsByComuna] = useState([]);
+  const isDeceased = pet?.status_id === 'deceased';
 
   // === Colaboradores (UI de compartir) ===
   const [members, setMembers] = useState([]);
@@ -79,6 +80,8 @@ export default function PetDetail() {
     acquired_at: "",
     status_id: "",
     current_weight: "",
+    cause_of_death: "",
+    deceased_at: null,
   });
 
   async function fetchOwnerContactByPet(petId) {
@@ -187,6 +190,8 @@ export default function PetDetail() {
         acquired_at: data.acquired_at || "",
         status_id: data.status_id || "",
         current_weight: data.current_weight?.toString() || "",
+        cause_of_death: data.cause_of_death || "",
+        deceased_at: data.deceased_at || null,
       });
 
       try {
@@ -339,6 +344,7 @@ export default function PetDetail() {
       }`;
   };
 
+// --- CAMBIO 3: 'handleSave' ahora incluye la lógica para 'deceased' ---
   const handleSave = async () => {
     if (!formData.name.trim()) {
       setError("El nombre es requerido");
@@ -354,19 +360,38 @@ export default function PetDetail() {
     setError("");
     setSuccess("");
 
-    const updateData = { name: formData.name.trim(), neutered: formData.neutered };
+    // Construye el objeto base con los datos del formulario
+    const updateData = {
+      name: formData.name.trim(),
+      neutered: formData.neutered,
+      species_id: formData.species_id || null,
+      breed: formData.breed?.trim() || null,
+      sex_id: formData.sex_id || null,
+      birth_date: formData.birth_date || null,
+      image_url: formData.image_url?.trim() || null,
+      microchip: formData.microchip?.trim() || null,
+      origin_id: formData.origin_id || null,
+      acquired_at: formData.acquired_at || null,
+      status_id: formData.status_id || null,
+      current_weight: (formData.current_weight && formData.current_weight !== "")
+        ? parseFloat(formData.current_weight)
+        : null,
+    };
 
-    if (formData.species_id) updateData.species_id = formData.species_id;
-    if (formData.breed && formData.breed.trim()) updateData.breed = formData.breed.trim();
-    if (formData.sex_id) updateData.sex_id = formData.sex_id;
-    if (formData.birth_date) updateData.birth_date = formData.birth_date;
-    if (formData.image_url && formData.image_url.trim()) updateData.image_url = formData.image_url.trim();
-    if (formData.microchip && formData.microchip.trim()) updateData.microchip = formData.microchip.trim();
-    if (formData.origin_id) updateData.origin_id = formData.origin_id;
-    if (formData.acquired_at) updateData.acquired_at = formData.acquired_at;
-    if (formData.status_id) updateData.status_id = formData.status_id;
-    if (formData.current_weight && formData.current_weight !== "")
-      updateData.current_weight = parseFloat(formData.current_weight);
+    // ⬇️ LÓGICA CONDICIONAL AÑADIDA ⬇️
+    if (formData.status_id === 'deceased') {
+      // Si el estado es 'fallecido', añade estos campos
+      updateData.cause_of_death = formData.cause_of_death?.trim() || null;
+      // Solo actualiza 'deceased_at' si no ha sido seteado antes
+      if (!pet.deceased_at) { 
+        updateData.deceased_at = new Date().toISOString();
+      }
+    } else {
+      // Si el estado NO es 'fallecido' (ej. 'active'), limpia los campos
+      updateData.cause_of_death = null;
+      updateData.deceased_at = null;
+    }
+    // ⬆️ FIN DE LA LÓGICA AÑADIDA ⬆️
 
     const { error: updateError } = await supabase
       .schema("petcare")
@@ -382,7 +407,7 @@ export default function PetDetail() {
     }
 
     setSuccess("Perfil actualizado exitosamente");
-    await loadPet();
+    await loadPet(); // Recarga los datos (incluyendo los nuevos)
 
     setTimeout(() => {
       setIsEditing(false);
@@ -406,6 +431,8 @@ export default function PetDetail() {
         acquired_at: pet.acquired_at || "",
         status_id: pet.status_id || "",
         current_weight: pet.current_weight?.toString() || "",
+        cause_of_death: pet.cause_of_death || "",
+        deceased_at: pet.deceased_at || null,
       });
     }
     setError("");
@@ -1049,7 +1076,7 @@ END:VCARD`;
                 </div>
               )}
 
-              {canEdit && activeTab === "rutinas" && (
+              {canEdit && !isDeceased && activeTab === "rutinas" && (
                 <div>
                   <h3 className="text-xl font-semibold mb-6">Rutinas y Eventos</h3>
                   <div className="bg-gray-50 p-6 rounded-2xl border shadow-sm">
@@ -1110,7 +1137,7 @@ END:VCARD`;
                     </div>
                     <button
                       type="submit"
-                      disabled={inviteBusy}
+                      disabled={inviteBusy || isDeceased}
                       className={`px-4 py-2 rounded-xl text-white ${inviteBusy ? 'bg-gray-400' : 'bg-black hover:bg-gray-800'}`}
                     >
                       {inviteBusy ? "Invitando..." : "Invitar"}
@@ -1300,6 +1327,27 @@ END:VCARD`;
                     ))}
                   </select>
                 </EditField>
+
+
+                {/* --- ⬇️ CAMPO CONDICIONAL AÑADIDO ⬇️ --- */}
+                {/* Esto solo se mostrará si el estado es 'deceased' */}
+                {formData.status_id === 'deceased' && (
+                  // Ocupa las 2 columnas si es 'deceased'
+                  <div className="sm:col-span-2"> 
+                    <EditField label="Causa de Fallecimiento (Opcional)">
+                      <textarea
+                        value={formData.cause_of_death || ''} // Asegura que no sea null
+                        onChange={(e) =>
+                          setFormData({ ...formData, cause_of_death: e.target.value })
+                        }
+                        rows={3}
+                        className="w-full px-4 py-2 border rounded-xl"
+                        placeholder="Describe la causa (ej. vejez, enfermedad, ...)"
+                      />
+                    </EditField>
+                  </div>
+                )}
+                {/* --- ⬆️ FIN DEL CAMPO AÑADIDO ⬆️ --- */}
 
                 <div className="sm:col-span-2">
                   <label className="flex items-center gap-3 cursor-pointer">
