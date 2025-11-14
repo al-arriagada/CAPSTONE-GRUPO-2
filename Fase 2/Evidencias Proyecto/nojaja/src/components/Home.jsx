@@ -8,10 +8,9 @@ import PetCard from "../components/PetCard.jsx";
 import { supabase } from "../supabaseClient.js";
 import AssignedPetCard from "../components/caregiver/AssignedPetCard.jsx";
 import ComplianceCard from "./ComplianceCard.jsx";
-import WalkTrendCard from "./WalkTrendCard.jsx"
-import ActivityIndicatorsCard from './ActivityIndicatorsCard.jsx';
-import CaregiverPayCard from './CaregiverPayCard.jsx';
-// Importa el componente de REGISTRO de gastos
+import WalkTrendCard from "./WalkTrendCard.jsx";
+import ActivityIndicatorsCard from "./ActivityIndicatorsCard.jsx";
+import CaregiverPayCard from "./CaregiverPayCard.jsx";
 import CaregiverExpensesLog from "./CaregiverExpensesLog.jsx";
 
 export default function Home() {
@@ -23,7 +22,7 @@ export default function Home() {
   const [upcomingCount, setUpcomingCount] = useState(0);
   const [tab, setTab] = useState("mascotas");
   const [expandedPetId, setExpandedPetId] = useState(null);
-  const [selectedPetFilter, setSelectedPetFilter] = useState('all');
+  const [selectedPetFilter, setSelectedPetFilter] = useState("all");
 
   // Estados de invitaciones
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -42,7 +41,7 @@ export default function Home() {
     if (pets && pets.length === 1) {
       setSelectedPetFilter(pets[0].pet_id);
     } else {
-      setSelectedPetFilter('all');
+      setSelectedPetFilter("all");
     }
   }, [pets]);
 
@@ -174,7 +173,6 @@ export default function Home() {
   }, [user]);
   // --- FIN Mascotas Compartidas ---
 
-
   /* ------------------------------------------------------- */
   /* Contador de invitaciones familiares */
   /* ------------------------------------------------------- */
@@ -223,7 +221,7 @@ export default function Home() {
     setExpandedPetId((id) => (id === petId ? null : petId));
 
   /* ------------------------------------------------------- */
-  /* Enviar invitación: cuidador o familiar */
+  /* Enviar invitación: cuidador / familiar / vet */
   /* ------------------------------------------------------- */
   const handleInviteSubmit = async (email, petId, inviteType) => {
     if (!email || !petId || !user) return false;
@@ -231,19 +229,82 @@ export default function Home() {
     setInviteError(null);
 
     try {
+      const normalizedEmail = email.toLowerCase().trim();
+
       const { data: rpcData, error: rpcError } = await supabase
         .schema("petcare")
-        .rpc("get_user_id_by_email", { email_to_find: email.toLowerCase().trim() });
+        .rpc("get_user_id_by_email", { email_to_find: normalizedEmail });
 
-      if (rpcError || !rpcData) {
-        throw new Error(
-          inviteType === "family"
-            ? "No se encontró un usuario 'dueño/familiar' con ese correo."
-            : "No se encontró un usuario 'cuidador' con ese correo."
-        );
+      console.log("get_user_id_by_email result:", rpcData, rpcError);
+
+      if (rpcError) {
+        console.error("❌ RPC get_user_id_by_email error:", rpcError);
+        throw new Error("Error consultando el usuario en la base de datos.");
       }
 
-      const memberId = rpcData;
+      // Soporta que la función devuelva:
+      // - un UUID (string)
+      // - un objeto { user_id, ... }
+      // - un arreglo de objetos/uuids
+      let memberId = null;
+
+      if (Array.isArray(rpcData)) {
+        if (rpcData.length > 0) {
+          const first = rpcData[0];
+          if (typeof first === "string") {
+            memberId = first;
+          } else if (first && typeof first === "object") {
+            memberId = first.user_id || first.id || null;
+          }
+        }
+      } else if (rpcData && typeof rpcData === "object") {
+        memberId = rpcData.user_id || rpcData.id || null;
+      } else if (typeof rpcData === "string") {
+        memberId = rpcData;
+      }
+
+      if (!memberId) {
+        let msg;
+        if (inviteType === "family") {
+          msg = "No se encontró un usuario 'dueño/familiar' con ese correo.";
+        } else if (inviteType === "vet") {
+          msg = "No se encontró un usuario 'veterinario' con ese correo.";
+        } else {
+          msg = "No se encontró un usuario 'cuidador' con ese correo.";
+        }
+        throw new Error(msg);
+      }
+
+      // Si se invita como VETERINARIO, validar que realmente tenga rol 'vet'
+      if (inviteType === "vet") {
+        const { data: vetRow, error: vetError } = await supabase
+          .schema("petcare")
+          .from("app_user")
+          .select("role_id")
+          .eq("user_id", memberId)
+          .maybeSingle();
+
+        if (vetError) {
+          console.error("❌ Error comprobando rol del veterinario:", vetError);
+          throw new Error("Error verificando el rol del usuario.");
+        }
+
+        if (!vetRow || vetRow.role_id !== "vet") {
+          throw new Error("El usuario existe pero no tiene rol de 'veterinario'.");
+        }
+      }
+
+      // 👉 Definir rol y permisos según inviteType
+      let memberRoleId = "caregiver";
+      let permissions = ["view"];
+
+      if (inviteType === "family") {
+        memberRoleId = "owner";
+        permissions = ["view", "upload_docs", "create_events"];
+      } else if (inviteType === "vet") {
+        memberRoleId = "vet";
+        permissions = ["view", "upload_docs", "create_events"];
+      }
 
       const { error: insertError } = await supabase
         .schema("petcare")
@@ -251,22 +312,23 @@ export default function Home() {
         .insert({
           pet_id: petId,
           member_user_id: memberId,
-          member_role_id: inviteType === "family" ? "owner" : "caregiver",
-          permissions:
-            inviteType === "family"
-              ? ["view", "upload_docs", "create_events"]
-              : ["view"],
+          member_role_id: memberRoleId,
+          permissions,
           invited_by: user.id,
           invited_at: new Date().toISOString(),
           status: "pending",
         });
 
-      if (insertError) throw insertError;
+      if (insertError) {
+        console.error("❌ Error insertando en pet_member:", insertError);
+        throw insertError;
+      }
 
       setIsInviting(false);
       setIsModalOpen(false);
       return true;
     } catch (err) {
+      console.error("handleInviteSubmit error:", err);
       setIsInviting(false);
       setInviteError(err.message);
       return false;
@@ -298,8 +360,6 @@ export default function Home() {
           <span>👥</span> Invitar Usuario
         </button>
 
-        {/* --- 👇 BOTÓN "Registrar Gasto" ELIMINADO --- */}
-
         <button
           className="inline-flex items-center gap-2 rounded-xl bg-black px-3 py-2 text-white text-sm hover:opacity-90"
           onClick={() => navigate("/app/pets/new")}
@@ -310,7 +370,9 @@ export default function Home() {
 
       {/* Header */}
       <header className="mt-4">
-        <h1 className="text-3xl font-semibold tracking-tight">Dashboard de Dueño</h1>
+        <h1 className="text-3xl font-semibold tracking-tight">
+          Dashboard de Dueño
+        </h1>
         <p className="mt-1 text-gray-500">
           Gestiona la información y cuidado de tus mascotas
         </p>
@@ -318,9 +380,24 @@ export default function Home() {
 
       {/* Estadísticas */}
       <section className="mt-6 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
-        <StatCard title="Mis Mascotas" value={stats.mascotas} helper="registradas" icon="♡" />
-        <StatCard title="Citas Próximas" value={stats.citasSemana} helper="esta semana" icon="🗓️" />
-        <StatCard title="Historiales" value={stats.historiales} helper="registros médicos" icon="📄" />
+        <StatCard
+          title="Mis Mascotas"
+          value={stats.mascotas}
+          helper="registradas"
+          icon="♡"
+        />
+        <StatCard
+          title="Citas Próximas"
+          value={stats.citasSemana}
+          helper="esta semana"
+          icon="🗓️"
+        />
+        <StatCard
+          title="Historiales"
+          value={stats.historiales}
+          helper="registros médicos"
+          icon="📄"
+        />
       </section>
 
       {/* Tabs */}
@@ -330,8 +407,8 @@ export default function Home() {
 
       {/* Contenido de Tabs */}
       <div className="mt-4">
-        {tab === "mascotas" && (
-          petsLoading ? (
+        {tab === "mascotas" &&
+          (petsLoading ? (
             <GridSkeleton />
           ) : pets.length === 0 ? (
             <EmptyState
@@ -341,20 +418,23 @@ export default function Home() {
             />
           ) : (
             <>
-              {refreshing && <div className="text-xs text-gray-500 mb-2">Actualizando…</div>}
+              {refreshing && (
+                <div className="text-xs text-gray-500 mb-2">Actualizando…</div>
+              )}
               <div className="grid grid-cols-1 gap-6 md:grid-cols-2 lg:grid-cols-3">
                 {pets.map((p) => (
                   <PetCard key={p.pet_id} pet={p} />
                 ))}
               </div>
             </>
-          )
-        )}
+          ))}
 
         {/* --- Apartado Mascotas Compartidas --- */}
-        {tab === "compartidas" && (
-          loadingSharedPets ? (
-            <div className="text-center py-10 text-gray-500">Cargando mascotas compartidas...</div>
+        {tab === "compartidas" &&
+          (loadingSharedPets ? (
+            <div className="text-center py-10 text-gray-500">
+              Cargando mascotas compartidas...
+            </div>
           ) : sharedPets.length === 0 ? (
             <div className="text-center py-10 text-gray-500">
               No tienes mascotas compartidas por otros dueños.
@@ -365,14 +445,15 @@ export default function Home() {
                 <AssignedPetCard key={pet.pet_id} pet={pet} />
               ))}
             </div>
-          )
-        )}
+          ))}
 
         {tab === "citas" && <AppointmentsTab />}
 
-        {tab === "historial" && (
-          docsLoading ? (
-            <div className="text-center text-gray-500 py-10">Cargando historial médico...</div>
+        {tab === "historial" &&
+          (docsLoading ? (
+            <div className="text-center text-gray-500 py-10">
+              Cargando historial médico...
+            </div>
           ) : groupedDocuments.length === 0 ? (
             <EmptyState
               title="Aún no has agregado ningún historial médico."
@@ -384,8 +465,12 @@ export default function Home() {
               <table className="w-full text-sm">
                 <thead className="bg-gray-50 text-gray-600">
                   <tr>
-                    <th className="px-6 py-3 text-left font-semibold">Mascota</th>
-                    <th className="px-6 py-3 text-left font-semibold">Documentos</th>
+                    <th className="px-6 py-3 text-left font-semibold">
+                      Mascota
+                    </th>
+                    <th className="px-6 py-3 text-left font-semibold">
+                      Documentos
+                    </th>
                     <th className="px-6 py-3"></th>
                   </tr>
                 </thead>
@@ -400,14 +485,16 @@ export default function Home() {
                 ))}
               </table>
             </div>
-          )
-        )}
+          ))}
 
-        {/* --- Pestaña Análisis (AHORA INCLUYE GASTOS DE CUIDADOR) --- */}
+        {/* --- Pestaña Análisis (incluye gastos) --- */}
         {tab === "analisis" && (
           <div>
             <div className="mb-6 flex items-center gap-4">
-              <label htmlFor="pet-filter-selector-analisis" className="text-sm font-medium text-gray-700">
+              <label
+                htmlFor="pet-filter-selector-analisis"
+                className="text-sm font-medium text-gray-700"
+              >
                 Mostrar análisis para:
               </label>
               <select
@@ -418,11 +505,12 @@ export default function Home() {
                 disabled={petsLoading || !pets || pets.length === 0}
               >
                 <option value="all">Todas las Mascotas</option>
-                {pets && pets.map((pet) => (
-                  <option key={pet.pet_id} value={pet.pet_id}>
-                    {pet.name}
-                  </option>
-                ))}
+                {pets &&
+                  pets.map((pet) => (
+                    <option key={pet.pet_id} value={pet.pet_id}>
+                      {pet.name}
+                    </option>
+                  ))}
               </select>
             </div>
 
@@ -434,32 +522,32 @@ export default function Home() {
                 actionLabel="Registrar Mascota"
                 onAction={() => navigate("/app/pets/new")}
               />
-            ) : selectedPetFilter === 'all' ? (
-              // Si selecciona "Todas"
+            ) : selectedPetFilter === "all" ? (
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
                 <ComplianceCard petId="all" />
                 <WalkTrendCard petId="all" />
-                <CaregiverPayCard petId="all" /> {/* <-- Tarjeta de Gastos movida aquí */}
+                <CaregiverPayCard petId="all" />
                 <ActivityIndicatorsCard petId="all" />
               </div>
             ) : (
-              // Si selecciona una mascota específica
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
                 <ComplianceCard petId={selectedPetFilter} />
                 <WalkTrendCard petId={selectedPetFilter} />
-                <CaregiverPayCard petId={selectedPetFilter} /> {/* <-- Tarjeta de Gastos movida aquí */}
+                <CaregiverPayCard petId={selectedPetFilter} />
                 <ActivityIndicatorsCard petId={selectedPetFilter} />
               </div>
             )}
           </div>
         )}
 
-
-        {/* --- Pestaña "Gastos" (AHORA MUESTRA EL REGISTRO) --- */}
+        {/* --- Pestaña "Gastos" (registro de pagos) --- */}
         {tab === "gastos" && (
           <div>
             <div className="mb-6 flex items-center gap-4">
-              <label htmlFor="pet-filter-selector-gastos" className="text-sm font-medium text-gray-700">
+              <label
+                htmlFor="pet-filter-selector-gastos"
+                className="text-sm font-medium text-gray-700"
+              >
                 Registrar pago de cuidador para:
               </label>
               <select
@@ -469,15 +557,17 @@ export default function Home() {
                 className="rounded-md border-gray-300 shadow-sm focus:border-black focus:ring-black sm:text-sm bg-white"
                 disabled={petsLoading || !pets || pets.length === 0}
               >
-                {/* Opción 'Todas' deshabilitada/cambiada para forzar selección */}
                 <option value="all" disabled={pets.length > 0}>
-                  {pets.length > 0 ? "Selecciona una mascota..." : "Primero registra una mascota"}
+                  {pets.length > 0
+                    ? "Selecciona una mascota..."
+                    : "Primero registra una mascota"}
                 </option>
-                {pets && pets.map((pet) => (
-                  <option key={pet.pet_id} value={pet.pet_id}>
-                    {pet.name}
-                  </option>
-                ))}
+                {pets &&
+                  pets.map((pet) => (
+                    <option key={pet.pet_id} value={pet.pet_id}>
+                      {pet.name}
+                    </option>
+                  ))}
               </select>
             </div>
 
@@ -489,19 +579,21 @@ export default function Home() {
                 actionLabel="Registrar Mascota"
                 onAction={() => navigate("/app/pets/new")}
               />
-            ) : selectedPetFilter === 'all' ? (
-              // Muestra un mensaje pidiendo seleccionar una mascota
+            ) : selectedPetFilter === "all" ? (
               <div className="rounded-2xl border-2 border-dashed border-gray-200 bg-white p-12 text-center text-gray-600">
-                <h3 className="text-lg font-semibold text-gray-800">Selecciona una mascota</h3>
-                <p className="mt-2 text-sm">Elige una mascota del menú superior para registrar el pago de su cuidador.</p>
+                <h3 className="text-lg font-semibold text-gray-800">
+                  Selecciona una mascota
+                </h3>
+                <p className="mt-2 text-sm">
+                  Elige una mascota del menú superior para registrar el pago de
+                  su cuidador.
+                </p>
               </div>
             ) : (
-              // Muestra el componente de REGISTRO
               <CaregiverExpensesLog petId={selectedPetFilter} />
             )}
           </div>
         )}
-
       </div>
 
       <div className="sr-only">Bienvenido, {ownerName}</div>
@@ -529,7 +621,9 @@ function PetDocumentGroup({ petName, docs, isExpanded, onToggle }) {
     <tbody className="divide-y divide-gray-200">
       <tr onClick={onToggle} className="cursor-pointer hover:bg-gray-50">
         <td className="px-6 py-4 font-medium text-gray-900">{petName}</td>
-        <td className="px-6 py-4 text-gray-500">{docs.length} documento(s)</td>
+        <td className="px-6 py-4 text-gray-500">
+          {docs.length} documento(s)
+        </td>
         <td className="px-6 py-4">▼</td>
       </tr>
       {isExpanded && (
@@ -538,7 +632,10 @@ function PetDocumentGroup({ petName, docs, isExpanded, onToggle }) {
             <div className="px-6 py-4 bg-gray-50/50">
               <ul className="divide-y divide-gray-200">
                 {docs.map((doc) => (
-                  <li key={doc.doc_id} className="py-2 flex justify-between">
+                  <li
+                    key={doc.doc_id}
+                    className="py-2 flex justify-between"
+                  >
                     <span>{doc.title}</span>
                     <button
                       onClick={() => window.open(doc.public_url, "_blank")}
@@ -578,7 +675,7 @@ function Tabs({ value, onChange }) {
     { key: "citas", label: "Citas" },
     { key: "historial", label: "Historial Médico" },
     { key: "analisis", label: "Análisis" },
-    { key: "gastos", label: "Gastos" }, // <-- AÑADIDO
+    { key: "gastos", label: "Gastos" },
   ];
   return (
     <div className="flex flex-wrap gap-2">
@@ -586,10 +683,11 @@ function Tabs({ value, onChange }) {
         <button
           key={it.key}
           onClick={() => onChange(it.key)}
-          className={`rounded-xl border px-3 py-1.5 text-sm ${value === it.key
-            ? "bg-black text-white border-black"
-            : "bg-white hover:bg-gray-50"
-            }`}
+          className={`rounded-xl border px-3 py-1.5 text-sm ${
+            value === it.key
+              ? "bg-black text-white border-black"
+              : "bg-white hover:bg-gray-50"
+          }`}
         >
           {it.label}
         </button>
@@ -619,7 +717,9 @@ function EmptyState({ title, actionLabel, onAction }) {
 /* ------------------------------------------------------- */
 function InviteMemberModal({ pets, onClose, onSubmit, loading, serverError }) {
   const [email, setEmail] = useState("");
-  const [selectedPetId, setSelectedPetId] = useState(pets[0]?.pet_id || "");
+  const [selectedPetId, setSelectedPetId] = useState(
+    pets[0]?.pet_id || ""
+  );
   const [inviteType, setInviteType] = useState("caregiver");
   const [localError, setLocalError] = useState("");
 
@@ -645,9 +745,12 @@ function InviteMemberModal({ pets, onClose, onSubmit, loading, serverError }) {
         onSubmit={handleSubmit}
         className="w-full max-w-md rounded-2xl bg-white p-6 shadow-xl"
       >
-        <h2 className="text-xl font-semibold text-gray-900">Invitar Usuario</h2>
+        <h2 className="text-xl font-semibold text-gray-900">
+          Invitar Usuario
+        </h2>
         <p className="mt-1 text-sm text-gray-600">
-          Puedes invitar a un cuidador o a un familiar (otro dueño) para compartir una mascota.
+          Puedes invitar a un cuidador, a un familiar (otro dueño) o a un
+          veterinario para compartir una mascota.
         </p>
 
         <div className="mt-6 space-y-4">
@@ -662,6 +765,7 @@ function InviteMemberModal({ pets, onClose, onSubmit, loading, serverError }) {
             >
               <option value="family">Familiar / Dueño</option>
               <option value="caregiver">Cuidador</option>
+              <option value="vet">Veterinario</option>
             </select>
           </div>
 
@@ -760,7 +864,7 @@ function AppointmentsTab() {
     const d = new Date(iso);
     return d.toLocaleString("es-CL", {
       dateStyle: "long",
-      timeStyle: "short"
+      timeStyle: "short",
     });
   };
 
@@ -808,7 +912,7 @@ function AppointmentsTab() {
           `)
           .in("pet_id", petIds)
           .in("e_type_id", ["routine_check", "vaccine_administered"])
-          .order("ts", { ascending: false }); // ← más reciente primero
+          .order("ts", { ascending: false });
 
         if (eventsError) throw eventsError;
         setAppointments(events || []);
@@ -824,11 +928,19 @@ function AppointmentsTab() {
   }, [user]);
 
   if (!user) {
-    return <div className="text-center py-10 text-gray-600">Inicia sesión para ver tus citas.</div>;
+    return (
+      <div className="text-center py-10 text-gray-600">
+        Inicia sesión para ver tus citas.
+      </div>
+    );
   }
 
   if (loading) {
-    return <div className="text-center py-10 text-gray-500">Cargando citas...</div>;
+    return (
+      <div className="text-center py-10 text-gray-500">
+        Cargando citas...
+      </div>
+    );
   }
 
   if (appointments.length === 0) {
@@ -858,9 +970,13 @@ function AppointmentsTab() {
                         : "Control Veterinario"}
                     </h4>
                     {new Date(a.ts) > new Date() ? (
-                      <span className="px-2 py-0.5 text-xs rounded-full bg-red-100 text-red-700">Programado</span>
+                      <span className="px-2 py-0.5 text-xs rounded-full bg-red-100 text-red-700">
+                        Programado
+                      </span>
                     ) : (
-                      <span className="px-2 py-0.5 text-xs rounded-full bg-green-100 text-green-700">Realizado</span>
+                      <span className="px-2 py-0.5 text-xs rounded-full bg-green-100 text-green-700">
+                        Realizado
+                      </span>
                     )}
                   </div>
                   <p className="text-sm text-gray-500">
@@ -870,18 +986,10 @@ function AppointmentsTab() {
               </div>
 
               <div className="space-y-1 text-sm text-gray-700">
-                {a.clinic?.name && (
-                  <p>🏥 {a.clinic.name}</p>
-                )}
-                {a.vet?.full_name && (
-                  <p>👨‍⚕️ {a.vet.full_name}</p>
-                )}
-                {a.clinic?.address && (
-                  <p>📍 {a.clinic.address}</p>
-                )}
-                {a.e_description && (
-                  <p>📝 {a.e_description}</p>
-                )}
+                {a.clinic?.name && <p>🏥 {a.clinic.name}</p>}
+                {a.vet?.full_name && <p>👨‍⚕️ {a.vet.full_name}</p>}
+                {a.clinic?.address && <p>📍 {a.clinic.address}</p>}
+                {a.e_description && <p>📝 {a.e_description}</p>}
               </div>
             </div>
           </div>
