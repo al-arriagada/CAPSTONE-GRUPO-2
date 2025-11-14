@@ -13,7 +13,6 @@ import ActivityIndicatorsCard from './ActivityIndicatorsCard.jsx';
 import CaregiverPayCard from './CaregiverPayCard.jsx';
 // Importa el componente de REGISTRO de gastos
 import CaregiverExpensesLog from "./CaregiverExpensesLog.jsx";
-import PetExpensesChart from "./PetExpensesChart.jsx";
 
 export default function Home() {
   const { user } = useAuth();
@@ -455,12 +454,6 @@ export default function Home() {
           </div>
         )}
 
-        {/* --- NUEVO TAB: Análisis de Gastos --- */}
-        {tab === "analisisGastos" && (
-          <div className="mt-4">
-            <PetExpensesChart userId={user?.id} />
-          </div>
-        )}
 
         {/* --- Pestaña "Gastos" (AHORA MUESTRA EL REGISTRO) --- */}
         {tab === "gastos" && (
@@ -585,7 +578,6 @@ function Tabs({ value, onChange }) {
     { key: "citas", label: "Citas" },
     { key: "historial", label: "Historial Médico" },
     { key: "analisis", label: "Análisis" },
-    { key: "analisisGastos", label: "Análisis de Gastos" },
     { key: "gastos", label: "Gastos" }, // <-- AÑADIDO
   ];
   return (
