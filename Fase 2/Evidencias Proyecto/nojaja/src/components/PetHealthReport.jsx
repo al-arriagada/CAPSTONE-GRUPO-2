@@ -5,7 +5,7 @@ import { supabase } from "../supabaseClient";
 
 
 export default function PetHealthReport() {
-  const { id } = useParams();           // pet_id
+  const { id } = useParams();
   const navigate = useNavigate();
 
 
@@ -69,7 +69,7 @@ export default function PetHealthReport() {
         .schema("petcare")
         .from("event")
         .select(`
-          event_id, ts, e_type_id, details,
+          event_id, ts, e_type_id, details, var_weight,
           event_type_catalog(display_name),
           vaccine_event(next_due_date)
         `)
@@ -158,6 +158,27 @@ export default function PetHealthReport() {
     const d = new Date();
     d.setMonth(d.getMonth() - 6);
     return (events || []).filter((e) => new Date(e.ts) >= d);
+  }, [events]);
+
+  // Variaciones de peso de últimos 6 meses
+  const weightVariations = useMemo(() => {
+    const d = new Date();
+    d.setMonth(d.getMonth() - 6);
+
+    return (events || [])
+      .filter((e) => e.var_weight && new Date(e.ts) >= d)
+      .map((e) => {
+        const v = typeof e.var_weight === "string"
+          ? JSON.parse(e.var_weight)
+          : e.var_weight;
+
+        return {
+          date: v.date,      // "2025-11-13"
+          value: v.value,    // 8
+          ts: e.ts           // para ordenar
+        };
+      })
+      .sort((a, b) => new Date(a.date) - new Date(b.date)); // más antiguo → nuevo
   }, [events]);
 
   if (loading) {
@@ -298,9 +319,9 @@ export default function PetHealthReport() {
                   <div className="font-medium">
                     {e.event_type_catalog?.display_name || "Evento"}
                   </div>
-                  {e.details && (
+                  {e.var_weight && (
                     <div className="text-sm text-gray-600">
-                      {typeof e.details === "object" ? JSON.stringify(e.details) : String(e.details)}
+                      {typeof e.var_weight === "object" ? JSON.stringify(e.var_weight) : String(e.var_weight)}
                     </div>
                   )}
                 </div>
@@ -309,6 +330,33 @@ export default function PetHealthReport() {
                 </div>
               </li>
             ))}
+          </ul>
+        )}
+      </Card>
+
+      <Card className="mt-4" title="Variaciones de Peso">
+        {weightVariations.length === 0 ? (
+          <div className="text-sm text-gray-600">
+            No se han registrado variaciones en el peso.
+          </div>
+        ) : (
+          <ul className="divide-y">
+            {weightVariations.map((w, i) => {
+              const fecha = new Date(w.date).toLocaleDateString("es-CL", {
+                day: "numeric",
+                month: "long",
+                year: "numeric"
+              });
+
+              return (
+                <li key={i} className="py-2">
+                  <span className="font-medium">{w.value} kg</span>
+                  <span className="text-sm text-gray-600">
+                    {`, registrado el ${fecha}`}
+                  </span>
+                </li>
+              );
+            })}
           </ul>
         )}
       </Card>
