@@ -1084,38 +1084,7 @@ END:VCARD`;
                       {memberErr || memberMsg}
                     </div>
                   )}
-                  <form onSubmit={handleInvite} className="flex flex-col sm:flex-row gap-3 items-stretch sm:items-end">
-                    <div className="flex-1">
-                      <label className="block text-sm font-medium text-gray-700 mb-1">Correo del colaborador</label>
-                      <input
-                        type="email"
-                        placeholder="profesional@clinica.cl"
-                        className="w-full px-3 py-2 border rounded-xl"
-                        value={inviteEmail}
-                        onChange={(e) => setInviteEmail(e.target.value)}
-                        required
-                      />
-                    </div>
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1">Rol</label>
-                      <select
-                        className="px-3 py-2 border rounded-xl bg-white"
-                        value={inviteRole}
-                        onChange={(e) => setInviteRole(e.target.value)}
-                      >
-                        <option value="vet">Veterinario</option>
-                        <option value="viewer">Lector</option>
-                        <option value="editor">Editor</option>
-                      </select>
-                    </div>
-                    <button
-                      type="submit"
-                      disabled={inviteBusy}
-                      className={`px-4 py-2 rounded-xl text-white ${inviteBusy ? 'bg-gray-400' : 'bg-black hover:bg-gray-800'}`}
-                    >
-                      {inviteBusy ? "Invitando..." : "Invitar"}
-                    </button>
-                  </form>
+                 
                   <div className="mt-4">
                     <h4 className="font-semibold mb-3">Accesos actuales</h4>
                     {membersLoading ? (
