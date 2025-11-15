@@ -25,74 +25,67 @@ export default function ActivityIndicatorsCard({ petId }) { // petId puede ser U
       setError(null);
 
       try {
-        // --- Fechas para hoy y esta semana ---
+        // --- 1. Definir rangos de fecha ---
         const today = new Date();
-        const todayStr = today.toISOString().split('T')[0];
+        const todayStart = new Date(today);
+        todayStart.setHours(0, 0, 0, 0);
+        
+        const todayEnd = new Date(today);
+        todayEnd.setHours(23, 59, 59, 999);
 
         // Calcular inicio de la semana ISO (Lunes)
-        const dayOfWeek = today.getDay(); // 0=Domingo, 1=Lunes,... 6=Sábado
-        const diff = today.getDate() - dayOfWeek + (dayOfWeek === 0 ? -6 : 1); // Ajusta al Lunes
-        const weekStart = new Date(today.setDate(diff));
+        // (Corregido para manejar 'today' sin mutarlo)
+        const currentDayOfWeek = today.getDay(); // 0=Domingo, 1=Lunes,...
+        const diff = today.getDate() - currentDayOfWeek + (currentDayOfWeek === 0 ? -6 : 1);
+        const weekStart = new Date(today.getFullYear(), today.getMonth(), diff);
         weekStart.setHours(0, 0, 0, 0);
-        const weekStartStr = weekStart.toISOString().split('T')[0];
-
-
-        // --- Construir Query Base ---
-        let dailyQuery = supabase
+        
+        // --- 2. Construir la consulta base ---
+        let query = supabase
           .schema('petcare')
-          .from('v_activity_daily')
-          .select('routines_done, walks_done')
-          .eq('day', todayStr); // Solo hoy
+          .from('alert')
+          .select(`
+            scheduled_at,
+            completed_at,
+            routine:routine_id ( routine_type_id )
+          `)
+          .eq('user_id', user.id) // <-- FILTRO EXPLÍCITO DE USUARIO (SIEMPRE)
+          .eq('status_id', 'completed')
+          .gte('scheduled_at', weekStart.toISOString()) // Trae todo desde el inicio de la semana
+          .lte('scheduled_at', todayEnd.toISOString()); // Hasta el fin de hoy
 
-        let weeklyQuery = supabase
-          .schema('petcare')
-          .from('v_activity_weekly')
-          .select('routines_done, walks_done')
-          .eq('week', weekStartStr); // Solo esta semana ISO
-
-
-        // --- Aplicar Filtro (Mascota o Todas) ---
-        if (petId === 'all') {
-          // Asumimos RLS en vistas/tablas base para filtrar por usuario
-          // Si no, necesitaríamos unir con 'pet' y filtrar user_id
-          //console.log("Fetching activity for ALL user pets");
-        } else {
-          //console.log(`Fetching activity for petId: ${petId}`);
-          dailyQuery = dailyQuery.eq('pet_id', petId);
-          weeklyQuery = weeklyQuery.eq('pet_id', petId);
+        // --- 3. Añadir filtro de mascota si no es 'all' ---
+        if (petId !== 'all') {
+          query = query.eq('pet_id', petId);
         }
 
-        // --- Ejecutar Consultas ---
-        const [dailyResult, weeklyResult] = await Promise.all([
-          dailyQuery,
-          weeklyQuery
-        ]);
+        const { data: alertsData, error: dbError } = await query;
+        if (dbError) throw dbError;
 
-        if (dailyResult.error) throw dailyResult.error;
-        if (weeklyResult.error) throw weeklyResult.error;
-
-        // --- Procesar Resultados ---
+        // --- 4. Procesar resultados en JavaScript ---
         let todayRoutines = 0;
         let todayWalks = 0;
         let weekRoutines = 0;
         let weekWalks = 0;
 
-        // Sumar datos diarios (si petId='all', data puede tener varias filas por mascota)
-        if (dailyResult.data) {
-          dailyResult.data.forEach(row => {
-            todayRoutines += row.routines_done || 0;
-            todayWalks += row.walks_done || 0;
-          });
-        }
+        (alertsData || []).forEach(alert => {
+          const alertDate = new Date(alert.completed_at || alert.scheduled_at);
+          
+          // Todas las alertas en 'alertsData' son de esta semana
+          weekRoutines++;
+          if (alert.routine?.routine_type_id === 'walk') {
+            weekWalks++;
+          }
 
-        // Sumar datos semanales (igual si petId='all')
-        if (weeklyResult.data) {
-          weeklyResult.data.forEach(row => {
-            weekRoutines += row.routines_done || 0;
-            weekWalks += row.walks_done || 0;
-          });
-        }
-
+          // Revisar si también son de "hoy"
+          if (alertDate >= todayStart && alertDate <= todayEnd) {
+            todayRoutines++;
+            if (alert.routine?.routine_type_id === 'walk') {
+              todayWalks++;
+            }
+          }
+        });
+        
         setActivityData({ todayRoutines, todayWalks, weekRoutines, weekWalks });
 
       } catch (err) {
@@ -142,10 +135,11 @@ export default function ActivityIndicatorsCard({ petId }) { // petId puede ser U
   );
 }
 
-// --- Componentes Helper (Opcional, puedes ponerlos al final o importarlos) ---
+// --- Componentes Helper (Opcional) ---
 const LoadingState = () => (
-  <div className="p-4 border rounded-lg bg-white text-center text-gray-500">Cargando actividad...</div>
+ <div className="p-4 border rounded-lg bg-white text-center text-gray-500">Cargando actividad...</div>
 );
+
 const ErrorState = ({ message }) => (
  <div className="p-4 border rounded-lg bg-red-50 text-center text-red-600">{message || "Error al cargar."}</div>
 );
