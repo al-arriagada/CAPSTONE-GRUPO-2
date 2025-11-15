@@ -1,10 +1,10 @@
 // src/components/WalkTrendCard.jsx
 import React, { useState, useEffect } from 'react';
-import { supabase } from '../supabaseClient.js'; // Asegúrate que la ruta sea correcta
-import { useAuth } from '../context/AuthContext.jsx'; // Asegúrate que la ruta sea correcta
+import { supabase } from '../supabaseClient.js';
+import { useAuth } from '../context/AuthContext.jsx';
 
 export default function WalkTrendCard({ petId }) { // petId puede ser UUID o 'all'
-  const { user } = useAuth(); // Obtener el usuario
+  const { user } = useAuth();
   const [trendData, setTrendData] = useState({
     currentWalks: null,
     prevWalks: null,
@@ -15,7 +15,6 @@ export default function WalkTrendCard({ petId }) { // petId puede ser UUID o 'al
 
   useEffect(() => {
     const fetchWalkTrend = async () => {
-      // Necesitamos user para el caso 'all', y un petId válido (sea UUID o 'all')
       if (!user || !petId) {
         setLoading(false);
         setError(petId ? "Usuario no encontrado." : "Selecciona mascota o 'Todas'.");
@@ -28,62 +27,72 @@ export default function WalkTrendCard({ petId }) { // petId puede ser UUID o 'al
 
       try {
         if (petId === 'all') {
-          // --- LÓGICA PARA 'TODAS' LAS MASCOTAS (CON FILTRO EXPLÍCITO) ---
-          console.log("Fetching walk trend for ALL user pets with explicit user filter");
+          // --- LÓGICA 'TODAS' (CORREGIDA) ---
+          console.log("Fetching walk trend for ALL user pets (Corrected Logic)");
 
-          const today = new Date();
-          const twoWeeksAgo = new Date(today);
-          twoWeeksAgo.setDate(today.getDate() - 14); // O 21 para margen
-          const startDateStr = twoWeeksAgo.toISOString();
-          const todayStr = today.toISOString();
+          // --- 1. Definir rangos de fecha (ESTA SEMANA y SEMANA PASADA) ---
+          const today = new Date(); // Usamos la fecha del cliente
 
-          // Consulta directa a 'alert' con filtro explícito de usuario y tipo de rutina
+          // Calcular inicio de ESTA semana (Lunes)
+          const currentDayOfWeek = today.getDay(); // 0=Domingo, 1=Lunes,...
+          const diffCurrent = today.getDate() - currentDayOfWeek + (currentDayOfWeek === 0 ? -6 : 1);
+          const weekStartCurrent = new Date(today.getFullYear(), today.getMonth(), diffCurrent);
+          weekStartCurrent.setHours(0, 0, 0, 0); // Lunes a las 00:00
+
+          // Calcular inicio de la semana PASADA (Lunes anterior)
+          const weekStartPrev = new Date(weekStartCurrent);
+          weekStartPrev.setDate(weekStartCurrent.getDate() - 7);
+          const weekStartPrevStr = weekStartPrev.toISOString();
+
+          // --- 2. Consultar 'alert' de las últimas 2 semanas ---
           const { data: alertsData, error: dbError } = await supabase
             .schema('petcare')
-            .from('alert') // Consulta la tabla base
+            .from('alert')
             .select(`
               scheduled_at,
               completed_at,
-              routine:routine_id ( routine_type_id )
+              routine!inner ( routine_type_id )
             `)
             .eq('user_id', user.id) // <-- FILTRO EXPLÍCITO POR USUARIO
             .eq('status_id', 'completed')
-            .eq('routine.routine_type_id', 'walk') // <-- Filtra paseos usando la relación
-            .gte('scheduled_at', startDateStr) // Rango de fecha inicio
-            .lte('scheduled_at', todayStr); // Rango de fecha fin
+            .eq('routine.routine_type_id', 'walk') // <-- Filtra SOLO paseos
+            .gte('scheduled_at', weekStartPrevStr) // Desde inicio de semana pasada
+            .lte('scheduled_at', today.toISOString()); // Hasta ahora
 
           if (dbError) throw dbError;
 
-          // Agregación en JavaScript por semana ISO
-          const weeklySums = (alertsData || [])
-            .reduce((acc, alert) => {
-              const relevantDate = new Date(alert.completed_at || alert.scheduled_at);
-              const dayOfWeek = relevantDate.getUTCDay(); // 0=Domingo(UTC), 1=Lunes,...
-              const diff = relevantDate.getUTCDate() - dayOfWeek + (dayOfWeek === 0 ? -6 : 1);
-              const weekStart = new Date(Date.UTC(relevantDate.getUTCFullYear(), relevantDate.getUTCMonth(), diff));
-              const weekStr = weekStart.toISOString().split('T')[0]; // Clave YYYY-MM-DD
-              acc[weekStr] = (acc[weekStr] || 0) + 1;
-              return acc;
-            }, {});
+          // --- 3. Calcular totales para CADA semana por separado ---
+          let currentWalks = 0;
+          let prevWalks = 0;
 
-          // Cálculo de Tendencia
-          const sortedWeeks = Object.keys(weeklySums).sort().reverse();
-          const currentWalks = sortedWeeks.length > 0 ? weeklySums[sortedWeeks[0]] : 0;
-          const prevWalks = sortedWeeks.length > 1 ? weeklySums[sortedWeeks[1]] : null;
+          (alertsData || []).forEach(alert => {
+            const relevantDate = new Date(alert.completed_at || alert.scheduled_at);
+            
+            // Compara con el inicio de la semana actual
+            if (relevantDate >= weekStartCurrent) {
+              currentWalks++;
+            } else {
+              // Si es anterior, pertenece a la semana pasada
+              prevWalks++;
+            }
+          });
+
+          // --- 4. Calcular porcentaje ---
           let changePercentage = null;
-          if (prevWalks !== null && prevWalks > 0) {
+          if (prevWalks > 0) {
             changePercentage = Math.round(((currentWalks - prevWalks) / prevWalks) * 1000) / 10;
           } else if (prevWalks === 0 && currentWalks > 0) {
             changePercentage = Infinity;
           }
-          setTrendData({ currentWalks, prevWalks, changePercentage });
+          // Si prevWalks es null (nunca hubo datos), changePercentage queda null.
+          
+          setTrendData({ currentWalks, prevWalks: prevWalks, changePercentage });
 
         } else {
-          // --- LÓGICA PARA MASCOTA ESPECÍFICA (Usa la vista) ---
-          //console.log(`Fetching walk trend for petId: ${petId}`);
+          // --- LÓGICA 'ESPECÍFICA' (sin cambios) ---
           const { data, error: dbError } = await supabase
             .schema('petcare')
-            .from('v_walks_weekly_trend') // Usa la vista precalculada
+            .from('v_walks_weekly_trend')
             .select('week, walks_count, prev_walks, pct_walks_change')
             .eq('pet_id', petId)
             .order('week', { ascending: false })
@@ -112,27 +121,27 @@ export default function WalkTrendCard({ petId }) { // petId puede ser UUID o 'al
     };
 
     fetchWalkTrend();
-  }, [petId, user]); // Añadir 'user' a las dependencias
+  }, [petId, user]);
 
   // --- Helper para formatear el cambio porcentual ---
   const renderChange = () => {
     const change = trendData.changePercentage;
     const prev = trendData.prevWalks;
 
-    if (prev === null) {
+    // Si no hay datos de la semana anterior (prevWalks es null o 0)
+    if (prev === null || prev === 0) {
       if (trendData.currentWalks > 0) {
          return <span className="text-sm font-semibold text-green-600">↑ Nueva actividad</span>;
       }
       return <span className="text-sm text-gray-500">vs semana anterior</span>;
     }
-    if (change === null) {
-        if (prev > 0 && trendData.currentWalks === 0) {
+
+    // Si hubo datos la semana anterior (prev > 0)
+    if (change === null) { // Caso prev > 0 pero current = 0
+        if (trendData.currentWalks === 0) {
              return <span className="text-sm font-semibold text-red-600">↓ -100% vs semana anterior</span>;
         }
         return <span className="text-sm text-gray-500">vs semana anterior</span>;
-    }
-     if (change === Infinity) {
-        return <span className="text-sm font-semibold text-green-600">↑ Nueva actividad</span>;
     }
 
     const isPositive = change > 0;
@@ -155,14 +164,9 @@ export default function WalkTrendCard({ petId }) { // petId puede ser UUID o 'al
   if (error) {
     return <ErrorState message={error} />;
   }
-  // Si no hay datos y no hubo error
-  if (!loading && !error && trendData.currentWalks === null && petId !== 'all') {
-      return <NoDataState message="No hay datos de paseos para esta mascota." />;
+  if (!loading && !error && trendData.currentWalks === null) {
+      return <NoDataState message="No hay datos de paseos." />;
   }
-   if (!loading && !error && trendData.currentWalks === null && petId === 'all') {
-      return <NoDataState message="No hay datos de paseos para tus mascotas." />;
-  }
-
 
   const cardTitle = petId === 'all' ? "Paseos Semanales (Todas)" : "Paseos Semanales";
 

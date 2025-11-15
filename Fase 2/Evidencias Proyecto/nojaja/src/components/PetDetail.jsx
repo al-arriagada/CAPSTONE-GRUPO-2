@@ -2,7 +2,7 @@
 import React, { useEffect, useState, useCallback, useRef } from "react";
 import { useParams, useNavigate, Link } from "react-router-dom";
 import QRCode from "react-qr-code";
-import { supabase } from "../supabaseClient";
+import { supabase } from "../supabaseClient.js";
 import { useAuth } from "../context/AuthContext.jsx";
 import RoutinesPanel from "./RoutinesPanel.jsx";
 import ConfirmDialog from "./ConfirmDialog.jsx";

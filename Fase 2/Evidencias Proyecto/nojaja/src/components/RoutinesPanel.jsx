@@ -1,56 +1,95 @@
 // src/components/RoutinesPanel.jsx
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, useCallback } from "react"; // ⬅️ Añade useCallback
 import { supabase } from "../supabaseClient.js";
 import { useAuth } from "../context/AuthContext.jsx";
 import NewRoutineModal from "./NewRoutine.jsx";
 import ConfirmDialog from "./ConfirmDialog.jsx";
 
+// ⬇️ Importa el nuevo sub-componente
+import RoutineListItem from "./RoutineListItem.jsx"; 
+
 export default function RoutinesPanel({ petId }) {
   const { user } = useAuth();
   const [open, setOpen] = useState(true);
   const [loading, setLoading] = useState(true);
-  const [rows, setRows] = useState([]);
+  const [rows, setRows] = useState([]); // Tus 'routines' (reglas)
   const [error, setError] = useState(null);
+
+  // --- 1. NUEVO ESTADO PARA LAS ALERTAS DE HOY ---
+  const [todayAlerts, setTodayAlerts] = useState([]);
+  const [loadingAlerts, setLoadingAlerts] = useState(true);
 
   // 'closed' | 'new' | 'edit'
   const [modalMode, setModalMode] = useState("closed");
   const [selectedRoutine, setSelectedRoutine] = useState(null);
   const [deletingRoutine, setDeletingRoutine] = useState(null);
 
-  const fetchRoutines = async () => {
+  // --- 2. FUNCIÓN PARA CARGAR AMBAS COSAS ---
+  const fetchData = useCallback(async () => {
     if (!user?.id || !petId) return;
     setLoading(true);
+    setLoadingAlerts(true);
     setError(null);
-    const { data, error } = await supabase
-      .schema("petcare")
-      .from("routine")
-      .select(
-        "routine_id, pet_id, routine_type_id, rrule, time_local, active, updated_at, title"
-      )
-      .eq("user_id", user.id)
-      .eq("pet_id", petId)
-      .order("active", { ascending: false })
-      .order("time_local", { ascending: true });
-    if (error) setError(error.message);
-    setRows(data || []);
+
+    // Fechas para "hoy"
+    const todayStart = new Date(); todayStart.setHours(0, 0, 0, 0);
+    const todayEnd = new Date(); todayEnd.setHours(23, 59, 59, 999);
+
+    const [routinesResult, alertsResult] = await Promise.all([
+      // Cargar Reglas (Routines)
+      supabase
+        .schema("petcare")
+        .from("routine")
+        .select(
+          "routine_id, pet_id, routine_type_id, rrule, time_local, active, updated_at, title"
+        )
+        .eq("user_id", user.id)
+        .eq("pet_id", petId)
+        .order("active", { ascending: false })
+        .order("time_local", { ascending: true }),
+      
+      // Cargar Tareas de Hoy (Alerts)
+      supabase
+        .schema("petcare")
+        .from("alert")
+        .select("alert_id, routine_id, status_id, scheduled_at")
+        .eq("user_id", user.id)
+        .eq("pet_id", petId)
+        .in('status_id', ['scheduled', 'sent']) // Solo pendientes
+        .gte('scheduled_at', todayStart.toISOString())
+        .lte('scheduled_at', todayEnd.toISOString())
+    ]);
+
+    if (routinesResult.error) setError(routinesResult.error.message);
+    setRows(routinesResult.data || []);
     setLoading(false);
-  };
+
+    if (alertsResult.error) setError(alertsResult.error.message);
+    setTodayAlerts(alertsResult.data || []);
+    setLoadingAlerts(false);
+
+  }, [user?.id, petId]); // ⬅️ useCallback depende de user y petId
 
   useEffect(() => {
-    fetchRoutines();
+    fetchData();
+    // Live updates
     const channel = supabase
-      .channel("routines-ch")
+      .channel(`routines-panel-ch-${petId}`) // Canal único por mascota
       .on(
         "postgres_changes",
         { event: "*", schema: "petcare", table: "routine", filter: `pet_id=eq.${petId}` },
-        () => fetchRoutines()
+        fetchData // Recarga todo si cambia una rutina
+      )
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "petcare", table: "alert", filter: `pet_id=eq.${petId}` },
+        fetchData // Recarga todo si cambia una alerta
       )
       .subscribe();
     return () => {
       supabase.removeChannel(channel);
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [user?.id, petId]);
+  }, [fetchData, petId]); // ⬅️ Usar fetchData y petId
 
   const counts = useMemo(() => {
     const act = rows.filter((r) => r.active).length;
@@ -64,6 +103,8 @@ export default function RoutinesPanel({ petId }) {
       .update({ active: !r.active })
       .eq("routine_id", r.routine_id);
     if (!error) {
+      // La suscripción de Supabase recargará los datos,
+      // pero actualizamos localmente para una UI más rápida.
       setRows((prev) =>
         prev.map((x) =>
           x.routine_id === r.routine_id ? { ...x, active: !x.active } : x
@@ -82,6 +123,7 @@ export default function RoutinesPanel({ petId }) {
       .eq("routine_id", r.routine_id);
     
     if (!error) {
+      // Dejamos que la suscripción de Supabase actualice la lista
       setRows((prev) => prev.filter((x) => x.routine_id !== r.routine_id));
       setDeletingRoutine(null);
     } else {
@@ -91,7 +133,7 @@ export default function RoutinesPanel({ petId }) {
 
   const timeHHmm = (t) => (t ? t.slice(0, 5) : "—");
   const ruleBadge = (rrule) => {
-    if (!rrule) return null;
+    if (!rrule) return <span className="px-2 py-0.5 text-xs rounded-full bg-slate-100 text-slate-700">Única</span>;
     const upper = rrule.toUpperCase();
     const txt = upper.includes("FREQ=DAILY")
       ? "Diaria"
@@ -99,7 +141,7 @@ export default function RoutinesPanel({ petId }) {
       ? "Semanal"
       : upper.includes("FREQ=MONTHLY")
       ? "Mensual"
-      : "Única";
+      : "Personalizada";
     return (
       <span className="px-2 py-0.5 text-xs rounded-full bg-slate-100 text-slate-700">
         {txt}
@@ -109,6 +151,7 @@ export default function RoutinesPanel({ petId }) {
 
   return (
     <div className="rounded-2xl border border-slate-200 bg-white">
+      {/* Header (sin cambios) */}
       <div className="flex items-center justify-between px-4 sm:px-6 py-4">
         <div className="flex items-center gap-3">
           <span className="text-xl">↻</span>
@@ -148,64 +191,32 @@ export default function RoutinesPanel({ petId }) {
           {error && ( <div className="p-4 text-sm text-red-600">Error: {error}</div> )}
           {!loading && !error && rows.length === 0 && ( <div className="p-4 text-sm text-slate-500">Sin rutinas aún.</div> )}
 
+          {/* --- 3. Renderiza el NUEVO componente de lista --- */}
           <ul className="flex flex-col gap-3">
-            {rows.map((r) => (
-              <li
-                key={r.routine_id}
-                className="flex items-center justify-between rounded-xl border px-4 py-3"
-              >
-                <div className="flex items-center gap-3">
-                  <div className="text-2xl">🍽️</div>
-                  <div>
-                    <div className="flex flex-wrap items-center gap-2">
-                      <span className="font-medium">
-                        {r.title || r.routine_type_id || "Rutina"}
-                      </span>
-                      {ruleBadge(r.rrule)}
-                    </div>
-                    <div className="text-sm text-slate-500 flex items-center gap-1">
-                      <span>🕒</span>
-                      <span>{timeHHmm(r.time_local)}</span>
-                    </div>
-                  </div>
-                </div>
-
-                <div className="flex items-center gap-2">
-                  <button
-                    className={`rounded-lg border px-2.5 py-1.5 text-sm ${
-                      r.active
-                        ? "border-blue-200 text-blue-700 bg-blue-50"
-                        : "border-slate-200 text-slate-600"
-                    }`}
-                    onClick={() => toggleActive(r)}
-                    title={r.active ? "Desactivar" : "Activar"}
-                  >
-                    🔔
-                  </button>
-
-                  {/* Cambiar el 'onClick' de Editar */}
-                  <button
-                    className="rounded-lg border px-2.5 py-1.5 text-sm text-slate-700"
-                    onClick={() => {
-                      setSelectedRoutine(r); // Guarda la rutina a editar
-                      setModalMode("edit");   // Abre en modo 'edit'
-                    }}
-                    title="Editar"
-                  >
-                    ✏️
-                  </button>
-
-                  {/* Cambiar el 'onClick' de Eliminar */}
-                  <button
-                    className="rounded-lg border px-2.5 py-1.5 text-sm text-red-600 border-red-200"
-                    onClick={() => setDeletingRoutine(r)} // Abre el modal de confirm.
-                    title="Eliminar"
-                  >
-                    🗑
-                  </button>
-                </div>
-              </li>
-            ))}
+            {rows.map((r) => {
+              // Encuentra la alerta de hoy para esta rutina
+              const alertForToday = loadingAlerts ? null : todayAlerts.find(
+                (a) => a.routine_id === r.routine_id
+              );
+              
+              return (
+                <RoutineListItem
+                  key={r.routine_id}
+                  routine={r}
+                  alert={alertForToday} // Pasa la alerta (o undefined)
+                  onToggleActive={() => toggleActive(r)}
+                  onEdit={() => {
+                    setSelectedRoutine(r);
+                    setModalMode("edit");
+                  }}
+                  onDelete={() => setDeletingRoutine(r)}
+                  timeHHmm={timeHHmm}
+                  ruleBadge={ruleBadge}
+                  // Pasa la función de recarga para que el botón "Completar" pueda usarla
+                  onRefresh={fetchData} 
+                />
+              );
+            })}
           </ul>
         </div>
       )}
@@ -218,10 +229,9 @@ export default function RoutinesPanel({ petId }) {
           petId={petId}
           onClose={() => setModalMode("closed")}
           onCreated={() => {
-            fetchRoutines();
+            fetchData(); // ⬅️ Usa fetchData
             setModalMode("closed");
           }}
-          // Pasa la rutina seleccionada si estamos en modo 'edit'
           routineToEdit={modalMode === "edit" ? selectedRoutine : null}
         />
       )}

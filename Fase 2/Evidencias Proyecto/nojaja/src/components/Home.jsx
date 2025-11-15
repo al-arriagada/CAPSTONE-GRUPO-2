@@ -8,7 +8,7 @@ import PetCard from "../components/PetCard.jsx";
 import { supabase } from "../supabaseClient.js";
 import AssignedPetCard from "../components/caregiver/AssignedPetCard.jsx";
 import ComplianceCard from "./ComplianceCard.jsx";
-import WalkTrendCard from "./WalkTrendCard.jsx";
+import WalkTrendCard from "./WalkTrendCard_v2.jsx";
 import ActivityIndicatorsCard from "./ActivityIndicatorsCard.jsx";
 import CaregiverPayCard from "./CaregiverPayCard.jsx";
 import CaregiverExpensesLog from "./CaregiverExpensesLog.jsx";
