@@ -15,8 +15,10 @@ export default function PetCard({ pet }) {
     birth_date,
     weight_kg,
     image_url,
+    status_id,
   } = pet;
 
+  const isDeceased = status_id === 'deceased';
   const navigate = useNavigate();
   const labelSpecies = SPECIES[species_id] ?? species_id;
   const labelSex = SEX[sex_id] ?? sex_id;
@@ -24,13 +26,29 @@ export default function PetCard({ pet }) {
   const openDetail = () => navigate(`/app/pets/${pet_id}`);
   const stop = (e) => e.stopPropagation(); // evita que el click de los botones abra el detalle
 
+
+  const cardClassName = `
+    rounded-2xl border bg-white shadow-sm transition
+    ${isDeceased
+      ? 'grayscale opacity-70' // Estilo fallecido
+      : 'hover:shadow-md cursor-pointer' // Estilo normal
+    }
+  `;
+
+  const linkClassName = `
+    rounded-xl border px-3 py-1.5 text-sm
+    ${isDeceased
+      ? 'text-gray-400 bg-gray-50 pointer-events-none' // Estilo deshabilitado
+      : 'hover:bg-gray-50' // Estilo normal
+    }
+  `;
   return (
     <div
       onClick={openDetail}
       role="button"
-      tabIndex={0}
+      tabIndex={isDeceased ? -1 : 0}
       onKeyDown={(e) => (e.key === "Enter" || e.key === " ") && openDetail()}
-      className="rounded-2xl border bg-white shadow-sm hover:shadow-md transition cursor-pointer"
+      className={cardClassName} // Aplicar clases condicionales
     >
       {/* Imagen */}
       <div className="aspect-[16/9] w-full overflow-hidden rounded-t-2xl bg-gray-100">
@@ -52,6 +70,7 @@ export default function PetCard({ pet }) {
       <div className="p-4">
         <div className="mb-1 flex items-center justify-between">
           <h3 className="text-lg font-semibold">{name}</h3>
+          {isDeceased && <span className="text-sm text-gray-500 ml-2">(Fallecido)</span>}
           <span className="rounded-full border px-2 py-0.5 text-xs">
             {labelSpecies}
           </span>
