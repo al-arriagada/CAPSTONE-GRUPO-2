@@ -171,7 +171,11 @@ export default function NewRoutineModal({ petId, onClose, onCreated, routineToEd
     if (rErr) throw rErr;
 
     // 2) primera alerta (email)
-    if (enableAlerts) {
+
+      // Define los canales de notificación basado en el checkbox
+      const alertChannels = enableAlerts ? ["email"] : []; // Si está marcado -> email, si no -> array vacío
+
+      // ¡SIEMPRE crea la fila 'alert'!
       const { error: aErr } = await supabase
         .schema("petcare")
         .from("alert")
@@ -183,10 +187,14 @@ export default function NewRoutineModal({ petId, onClose, onCreated, routineToEd
           user_id: user.id,
           title: routine.title,
           body: description?.trim() || "",
-          channels: ["email"],
+          channels: alertChannels, // ⬅️ Usa la variable
         });
       if (aErr) throw aErr;
-    }
+      // ⬆️ FIN DEL CAMBIO ⬆️
+
+      setSaving(false);
+      onCreated?.();
+      onClose?.();
   };
   
   // Lógica de ACTUALIZAR
