@@ -16,7 +16,6 @@ const formatDate = (dateString) => {
 
 export default function Invitations() { // Asegúrate que este nombre coincida con tu router.jsx
   const { user } = useAuth();
-  const navigate = useNavigate();
   const [invitations, setInvitations] = useState([]);
   const [loading, setLoading] = useState(true);
   const [updatingId, setUpdatingId] = useState(null); 
