@@ -171,18 +171,3 @@ export default function WalkTrendCard({ petId }) { // petId puede ser UUID o 'al
     </div>
   );
 }
-
-// --- Componentes Helper ---
-const LoadingState = () => (
- <div className="p-4 border rounded-lg bg-white text-center text-gray-500">Cargando tendencias...</div>
-);
-
-const ErrorState = ({ message }) => (
- <div className="p-4 border rounded-lg bg-red-50 text-center text-red-600">{message || "Error al cargar."}</div>
-);
-
-const NoDataState = ({ message }) => (
-   <div className="p-4 border rounded-lg bg-white text-center text-gray-500">
-     {message || "No hay datos disponibles."}
-   </div>
-);
