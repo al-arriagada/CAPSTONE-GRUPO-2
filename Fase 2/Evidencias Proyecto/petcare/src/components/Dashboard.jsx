@@ -171,3 +171,151 @@ export default function WalkTrendCard({ petId }) { // petId puede ser UUID o 'al
     </div>
   );
 }
+
+// src/components/PetCard.jsx
+import React from "react";
+import { Link, useNavigate } from "react-router-dom";
+
+const SPECIES = { dog: "Perro", cat: "Gato", other: "Otro" };
+const SEX = { male: "Macho", female: "Hembra", unknown: "Desconocido" };
+
+export default function PetCard({ pet }) {
+  const {
+    pet_id,
+    name,
+    species_id,
+    breed,
+    sex_id,
+    birth_date,
+    weight_kg,
+    image_url,
+    status_id, // --- 1. Asegúrate de recibir 'status_id' en el objeto 'pet' ---
+  } = pet;
+
+  // --- 2. Define la variable de estado ---
+  const isDeceased = status_id === 'deceased';
+
+  const navigate = useNavigate();
+  const labelSpecies = SPECIES[species_id] ?? species_id;
+  const labelSex = SEX[sex_id] ?? sex_id;
+
+  // --- 3. Modifica 'openDetail' para no navegar si ha fallecido ---
+  const openDetail = () => {
+    if (isDeceased) return; // No hacer nada si está fallecido
+    navigate(`/app/pets/${pet_id}`);
+  };
+  
+  const stop = (e) => e.stopPropagation(); // evita que el click de los botones abra el detalle
+
+  // --- 4. Define clases CSS condicionales ---
+  const cardClassName = `
+    rounded-2xl border bg-white shadow-sm transition
+    ${isDeceased
+      ? 'grayscale opacity-70' // Estilo fallecido
+      : 'hover:shadow-md cursor-pointer' // Estilo normal
+    }
+  `;
+
+  const linkClassName = `
+    rounded-xl border px-3 py-1.5 text-sm
+    ${isDeceased
+      ? 'text-gray-400 bg-gray-50 pointer-events-none' // Estilo deshabilitado
+      : 'hover:bg-gray-50' // Estilo normal
+    }
+  `;
+
+  return (
+    <div
+      onClick={openDetail}
+      role="button"
+      tabIndex={isDeceased ? -1 : 0} // Deshabilitar navegación por teclado
+      onKeyDown={(e) => (e.key === "Enter" || e.key === " ") && openDetail()}
+      className={cardClassName} // Aplicar clases condicionales
+    >
+      {/* Imagen */}
+      <div className="aspect-[16/9] w-full overflow-hidden rounded-t-2xl bg-gray-100">
+        {image_url ? (
+          <img
+            src={image_url}
+            alt={name}
+            className="h-full w-full object-cover"
+            loading="lazy"
+          />
+        ) : (
+          <div className="flex h-full items-center justify-center text-gray-400">
+            Sin foto
+          </div>
+        )}
+      </div>
+
+      {/* Contenido */}
+      <div className="p-4">
+        <div className="mb-1 flex items-center justify-between">
+          <h3 className="text-lg font-semibold">
+            {name}
+            {/* --- 5. Añade etiqueta "(Fallecido)" --- */}
+            {isDeceased && <span className="text-sm text-gray-500 ml-2">(Fallecido)</span>}
+          </h3>
+          <span className="rounded-full border px-2 py-0.5 text-xs">
+            {labelSpecies}
+          </span>
+        </div>
+
+        {/* ... (tu <dl> con Raza, Sexo, etc. no cambia) ... */}
+        <dl className="grid grid-cols-2 gap-x-4 gap-y-2 text-sm text-gray-600">
+          {breed && (
+            <>
+              <dt className="col-span-1">Raza</dt>
+              <dd className="col-span-1">{breed}</dd>
+            </>
+          )}
+          <dt>Sexo</dt>
+          <dd>{labelSex}</dd>
+          {birth_date && (
+            <>
+              <dt>Nacimiento</dt>
+              <dd>{new Date(birth_date).toLocaleDateString()}</dd>
+            </>
+          )}
+          {weight_kg != null && (
+            <>
+              <dt>Peso</dt>
+              <dd>{Number(weight_kg).toFixed(1)} kg</dd>
+            </>
+          )}
+        </dl>
+
+        {/* Acciones */}
+        <div className="mt-4 flex gap-2">
+          <Link
+            to={`/app/pets/${pet_id}/eventlog`}
+            onClick={stop}
+            className={linkClassName} // Aplicar clases condicionales
+            aria-disabled={isDeceased} // Para accesibilidad
+            tabIndex={isDeceased ? -1 : 0} // Deshabilitar navegación por teclado
+          >
+            Ver eventos
+          </Link>
+          <Link
+            to={`/app/pets/${pet_id}/diet`}
+            onClick={stop}
+            className={linkClassName} // Aplicar clases condicionales
+            aria-disabled={isDeceased}
+            tabIndex={isDeceased ? -1 : 0}
+          >
+            Ver alimentación
+          </Link>
+          <Link
+            to={`/app/pets/${pet_id}/expense`}
+            onClick={stop}
+            className={linkClassName} // Aplicar clases condicionales
+            aria-disabled={isDeceased}
+            tabIndex={isDeceased ? -1 : 0}
+          >
+            Ver gastos
+          </Link>
+        </div>
+      </div>
+    </div>
+  );
+}
