@@ -75,7 +75,6 @@ export default function CaregiverHome() {
     }
   }, [user]);
 
-  // --- Función para buscar mascotas (Pestaña "Asignadas") ---
   const fetchAssignedPetsForDashboard = useCallback(async () => {
       if (!user) {
         setAssignedPetsForDashboard([]);
@@ -137,7 +136,6 @@ export default function CaregiverHome() {
       }
   }, [user]);
 
-  // --- 👇 NUEVA FUNCIÓN SOLO PARA EL CONTADOR ---
   const fetchMascotasACargoCount = useCallback(async () => {
     if (!user) {
       setMascotasACargoCount(0);
