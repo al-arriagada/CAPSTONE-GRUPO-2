@@ -15,8 +15,8 @@ const getTodayDateString = () => {
 };
 
 // --- HELPER DE RANGO DE FECHA (NUEVO) ---
-// Calcula el inicio y fin del día de hoy en formato UTC
-// para consultar la columna 'scheduled_at' (que es timestamptz)
+
+
 const getTodayUTCRange = () => {
   const start = new Date();
   start.setHours(0, 0, 0, 0); // Inicio del día local (ej. 24 Oct 00:00:00 GTM-3)
