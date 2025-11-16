@@ -1,7 +1,7 @@
 // src/components/Signup.jsx
 import { useEffect, useMemo, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
-import { supabase } from "../supabaseClient";
+import { supabase } from "../supabaseClient.js";
 
 const GENDERS = [
   { value: "male", label: "Masculino" },
