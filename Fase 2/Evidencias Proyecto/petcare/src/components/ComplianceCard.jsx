@@ -7,7 +7,7 @@ import { useAuth } from '../context/AuthContext.jsx';
 const COMPLIANCE_PERIOD_DAYS = 7;
 
 export default function ComplianceCard({ petId }) { // petId can be UUID or 'all'
-  const { user } = useAuth(); // ⬅️ 2. Get the user object
+  const { user } = useAuth(); 
   const [complianceData, setComplianceData] = useState({
     averagePct: null,
     totalCompleted: 0,
@@ -37,16 +37,10 @@ export default function ComplianceCard({ petId }) { // petId can be UUID or 'all
           .schema('petcare')
           .from('v_pet_compliance')
           .select('scheduled_cnt, completed_cnt, compliance_pct')
-          .gte('day', startDateStr); // Filter by date range first
+          .gte('day', startDateStr); 
 
         if (petId === 'all') {
-          // **Query for 'all' pets belonging to the user**
-          // This relies on RLS on the 'alert' table (used by the view)
-          // implicitly filtering by auth.uid(). If RLS isn't properly set,
-          // this might fetch more data than intended.
-          // A dedicated RPC function filtering by user_id would be safer.
-          //console.log("Fetching compliance for ALL user pets");
-          // No additional .eq() needed if RLS is correct.
+
           query = supabase
             .schema('petcare')
             .from('alert') // Consulta la tabla base
@@ -67,7 +61,6 @@ export default function ComplianceCard({ petId }) { // petId can be UUID or 'all
         } else {
           if (petId === 'all') {
              const totals = data.reduce((acc, alert) => {
-                // Cuenta todas las que debieron completarse (ajusta según tu lógica de 'scheduled_cnt')
                 if (['scheduled', 'sent', 'completed', 'skipped'].includes(alert.status_id)) {
                    acc.totalScheduled += 1;
                 }
@@ -82,7 +75,7 @@ export default function ComplianceCard({ petId }) { // petId can be UUID or 'all
                 : null;
              setComplianceData({ averagePct: overallPct, ...totals });
 
-          } else { // Si consultaste la vista para un petId específico
+          } else { 
              const totalScheduled = data.reduce((sum, day) => sum + (day.scheduled_cnt || 0), 0);
              const totalCompleted = data.reduce((sum, day) => sum + (day.completed_cnt || 0), 0);
              const overallPct = totalScheduled > 0
@@ -105,7 +98,7 @@ export default function ComplianceCard({ petId }) { // petId can be UUID or 'all
 
   const { averagePct, totalCompleted, totalScheduled } = complianceData;
 
-  // Renderizado condicional (loading, error, no data) - está bien
+  
   if (loading) { /* ... */ }
   if (error) { /* ... */ }
   if (!loading && !error && (averagePct === null || totalScheduled === 0)) { /* ... */ }
@@ -136,17 +129,17 @@ export default function ComplianceCard({ petId }) { // petId can be UUID or 'all
   );
 }
 
-// Loading state component
+
 const LoadingState = () => (
   <div className="p-4 border rounded-lg bg-white text-center text-gray-500">Cargando cumplimiento...</div>
 );
 
-// Error state component (optional)
+
 const ErrorState = ({ message }) => (
  <div className="p-4 border rounded-lg bg-red-50 text-center text-red-600">{message || "Error al cargar."}</div>
 );
 
-// No data state component (optional)
+
 const NoDataState = () => (
    <div className="p-4 border rounded-lg bg-white text-center text-gray-500">
      No hay suficientes datos de rutinas completadas en los últimos 7 días.
