@@ -35,13 +35,7 @@ export default function PetCard({ pet }) {
     }
   `;
 
-  const linkClassName = `
-    rounded-xl border px-3 py-1.5 text-sm
-    ${isDeceased
-      ? 'text-gray-400 bg-gray-50 pointer-events-none' // Estilo deshabilitado
-      : 'hover:bg-gray-50' // Estilo normal
-    }
-  `;
+
   return (
     <div
       onClick={openDetail}
