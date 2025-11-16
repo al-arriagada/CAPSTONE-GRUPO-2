@@ -2,7 +2,6 @@
 
 import React from 'react';
 
-// --- Helper Functions (puedes moverlas a un archivo utils) ---
 
 const calculateAge = (birthDate) => {
   if (!birthDate) return 'N/A';
