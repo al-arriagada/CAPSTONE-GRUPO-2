@@ -54,9 +54,7 @@ export default function CaregiverPayCard({ petId }) { // petId puede ser UUID o 
           .select('spent_at, amount') // <-- CAMBIO: Columnas 'spent_at' y 'amount'
           .eq('user_id', user.id) // Pagos hechos por el dueño logueado
           
-          // --- ¡ASUNCIÓN IMPORTANTE! ---
-          // Asumo que tu categoría para pagos de cuidador es 'caregiver'
-          // Si es otra, cámbiala aquí (ej: 'servicios')
+       
           .eq('category_id', 'caregiver') // <-- CAMBIO: Filtrar por categoría
           
           .gte('spent_at', startDateStr) // Rango de fecha inicio

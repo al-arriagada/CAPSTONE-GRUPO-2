@@ -15,7 +15,6 @@ const formatDate = (dateString) => {
 
 export default function OwnerInvitations() {
   const { user } = useAuth();
-  const navigate = useNavigate();
   const [invitations, setInvitations] = useState([]);
   const [loading, setLoading] = useState(true);
   const [updatingId, setUpdatingId] = useState(null);
