@@ -1,6 +1,6 @@
 // src/components/owner/OwnerInvitations.jsx
 import React, { useState, useEffect, useMemo } from "react";
-import { Link, useNavigate } from "react-router-dom";
+import { Link } from "react-router-dom";
 import { useAuth } from "../../context/AuthContext.jsx";
 import { supabase } from "../../supabaseClient.js";
 
