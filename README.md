@@ -69,8 +69,6 @@ Las Edge Functions permiten manejar eventos del lado del servidor, como el enví
 
 ## Módulos en Desarrollo
 
-Panel analítico: visualización de porcentajes de cumplimiento y tendencias semanales o mensuales.
+Panel de reportes: visualización de porcentajes de cumplimiento y tendencias semanales o mensuales.
 
 Módulo de gastos: registro y visualización de los gastos asociados a la mascota.
-
-
