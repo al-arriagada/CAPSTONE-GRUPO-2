@@ -1,5 +1,4 @@
--- WARNING: This schema is for context only and is not meant to be run.
--- Table order and constraints may not be valid for execution.
+-- Schema PetCare.
 
 CREATE TABLE petcare.alert_status_catalog (
   status_id text NOT NULL,
