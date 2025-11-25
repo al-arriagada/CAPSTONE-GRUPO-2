@@ -344,7 +344,7 @@ export default function PetDetail() {
       }`;
   };
 
-// --- CAMBIO 3: 'handleSave' ahora incluye la lógica para 'deceased' ---
+  // --- CAMBIO 3: 'handleSave' ahora incluye la lógica para 'deceased' ---
   const handleSave = async () => {
     if (!formData.name.trim()) {
       setError("El nombre es requerido");
@@ -383,7 +383,7 @@ export default function PetDetail() {
       // Si el estado es 'fallecido', añade estos campos
       updateData.cause_of_death = formData.cause_of_death?.trim() || null;
       // Solo actualiza 'deceased_at' si no ha sido seteado antes
-      if (!pet.deceased_at) { 
+      if (!pet.deceased_at) {
         updateData.deceased_at = new Date().toISOString();
       }
     } else {
@@ -709,7 +709,7 @@ END:VCARD`;
     <div className="min-h-screen bg-gray-50">
       <div className="bg-white border-b">
         <div className="max-w-5xl mx-auto px-6 py-4">
-          <div className="flex items-center justify-between">
+          <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
             <button
               onClick={() => navigate("/app")}
               className="flex items-center gap-2 text-gray-600 hover:text-gray-900 text-sm"
@@ -786,7 +786,7 @@ END:VCARD`;
         )}
 
         <div className="bg-white rounded-2xl border shadow-sm p-8 mb-6">
-          <div className="flex items-start gap-8">
+          <div className="flex flex-col sm:flex-row items-center sm:items-start gap-6 sm:gap-8">
             <div className="flex-shrink-0">
               <div className="w-32 h-32 rounded-full overflow-hidden bg-gray-100">
                 <img
@@ -835,11 +835,11 @@ END:VCARD`;
 
         {!isEditing && (
           <>
-            <div className="bg-white rounded-t-2xl border-t border-x shadow-sm">
+            <div className="bg-white rounded-t-2xl border-t border-x shadow-sm overflow-x-auto">
               <div className="flex border-b">
                 <button
                   onClick={() => setActiveTab("id")}
-                  className={`flex-1 px-6 py-4 text-sm font-medium transition-colors ${activeTab === "id"
+                  className={`min-w-max overflow-x-auto px-6 py-4 text-sm font-medium transition-colors ${activeTab === "id"
                     ? "border-b-2 border-black text-black"
                     : "text-gray-500 hover:text-gray-700"
                     }`}
@@ -848,7 +848,7 @@ END:VCARD`;
                 </button>
                 <button
                   onClick={() => setActiveTab("perfil")}
-                  className={`flex-1 px-6 py-4 text-sm font-medium transition-colors ${activeTab === "perfil"
+                  className={`min-w-max overflow-x-auto px-6 py-4 text-sm font-medium transition-colors ${activeTab === "perfil"
                     ? "border-b-2 border-black text-black"
                     : "text-gray-500 hover:text-gray-700"
                     }`}
@@ -857,7 +857,7 @@ END:VCARD`;
                 </button>
                 <button
                   onClick={() => setActiveTab("historial")}
-                  className={`flex-1 px-6 py-4 text-sm font-medium transition-colors ${activeTab === "historial"
+                  className={`min-w-max overflow-x-auto px-6 py-4 text-sm font-medium transition-colors ${activeTab === "historial"
                     ? "border-b-2 border-black text-black"
                     : "text-gray-500 hover:text-gray-700"
                     }`}
@@ -866,7 +866,7 @@ END:VCARD`;
                 </button>
                 {canEdit && (<button
                   onClick={() => setActiveTab("rutinas")}
-                  className={`flex-1 px-6 py-4 text-sm font-medium transition-colors ${activeTab === "rutinas"
+                  className={`min-w-max overflow-x-auto px-6 py-4 text-sm font-medium transition-colors ${activeTab === "rutinas"
                     ? "border-b-2 border-black text-black"
                     : "text-gray-500 hover:text-gray-700"
                     }`}
@@ -875,7 +875,7 @@ END:VCARD`;
                 </button>)}
                 {canEdit && (<button
                   onClick={() => setActiveTab("colaboradores")}
-                  className={`flex-1 px-6 py-4 text-sm font-medium transition-colors ${activeTab === "colaboradores"
+                  className={`min-w-max overflow-x-auto px-6 py-4 text-sm font-medium transition-colors ${activeTab === "colaboradores"
                     ? "border-b-2 border-black text-black"
                     : "text-gray-500 hover:text-gray-700"
                     }`}
@@ -933,7 +933,7 @@ END:VCARD`;
                   </div>
 
                   {owner && (
-                    <div className="mt-8 p-6 border rounded-2xl bg-gray-50">
+                    <div className="mt-8 p-4 sm:p-6 border rounded-2xl bg-gray-50">
                       <h4 className="font-semibold mb-4">
                         Información Visible al Escanear
                       </h4>
@@ -975,7 +975,7 @@ END:VCARD`;
                   <h3 className="text-xl font-semibold mb-6">
                     Información del Perfil
                   </h3>
-                  <div className="grid grid-cols-2 gap-6">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
                     <InfoItem
                       label="Especie"
                       value={getSpeciesName(pet.species_id)}
@@ -1077,9 +1077,9 @@ END:VCARD`;
               )}
 
               {canEdit && !isDeceased && activeTab === "rutinas" && (
-                <div>
+                <div className="overflow-x-auto">
                   <h3 className="text-xl font-semibold mb-6">Rutinas y Eventos</h3>
-                  <div className="bg-gray-50 p-6 rounded-2xl border shadow-sm">
+                  <div className="bg-gray-50 p-4 sm:p-6 rounded-2xl border shadow-sm">
                     <RoutinesPanel petId={pet.pet_id} />
                     <h4 className="text-lg font-medium mb-4"></h4>
                     <h4 className="text-lg font-medium mb-4">Calendario</h4>
@@ -1098,7 +1098,7 @@ END:VCARD`;
               )}
 
               {canEdit && activeTab === "colaboradores" && (
-                <div className="space-y-6">
+                <div className="space-y-6 ">
                   <div className="flex items-center gap-3 mb-2">
                     <span className="text-2xl">🤝</span>
                     <h3 className="text-xl font-semibold">Colaboradores en {pet.name}</h3>
@@ -1111,7 +1111,7 @@ END:VCARD`;
                       {memberErr || memberMsg}
                     </div>
                   )}
-                 
+
                   <div className="mt-4">
                     <h4 className="font-semibold mb-3">Accesos actuales</h4>
                     {membersLoading ? (
@@ -1119,30 +1119,52 @@ END:VCARD`;
                     ) : members.length === 0 ? (
                       <div className="text-gray-500">Aún no hay colaboradores.</div>
                     ) : (
-                      <ul className="divide-y">
+                      <ul className="divide-y divide-gray-100">
                         {members.map((m) => {
-                          const name = m.app_user?.full_name || m.app_user?.email || m.member_user_id;
+                          const name = m.app_user?.full_name || m.app_user?.email || "Usuario";
                           const email = m.app_user?.email;
+
                           return (
-                            <li key={m.member_user_id} className="py-3 flex items-center justify-between">
-                              <div>
-                                <div className="font-medium">{name}</div>
-                                <div className="text-sm text-gray-500 flex items-center gap-2">
-                                  {email && <span>{email}</span>}
-                                  {roleBadge(m.member_role_id)}
-                                  {Array.isArray(m.permissions) && m.permissions.length > 0 && (
-                                    <span className="text-xs bg-gray-100 px-2 py-0.5 rounded-full">
-                                      {m.permissions.join(", ")}
-                                    </span>
-                                  )}
+                            <li key={m.member_user_id} className="py-4">
+                              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+
+                                {/* Información del Usuario */}
+                                <div className="flex-1 min-w-0"> {/* min-w-0 ayuda a truncar texto largo */}
+                                  <div className="font-medium text-gray-900 truncate">
+                                    {name}
+                                  </div>
+
+                                  {/* Email y Roles - Apilados en móvil, línea en escritorio */}
+                                  <div className="mt-1 flex flex-col sm:flex-row sm:items-center gap-2 text-sm text-gray-500">
+                                    {email && (
+                                      <span className="truncate block sm:inline">{email}</span>
+                                    )}
+
+                                    <div className="flex flex-wrap gap-2 mt-1 sm:mt-0">
+                                      {/* Badge de Rol */}
+                                      {roleBadge(m.member_role_id)}
+
+                                      {/* Badge de Permisos */}
+                                      {Array.isArray(m.permissions) && m.permissions.length > 0 && (
+                                        <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-gray-100 text-gray-800">
+                                          {m.permissions.join(", ")}
+                                        </span>
+                                      )}
+                                    </div>
+                                  </div>
                                 </div>
+
+                                {/* Botón de Acción */}
+                                <div className="flex-shrink-0 self-start sm:self-center">
+                                  <button
+                                    onClick={() => revokeMember(m.member_user_id)}
+                                    className="text-sm font-medium text-red-600 hover:text-red-800 border border-red-200 hover:bg-red-50 rounded-lg px-3 py-1.5 transition-colors"
+                                  >
+                                    Revocar
+                                  </button>
+                                </div>
+
                               </div>
-                              <button
-                                onClick={() => revokeMember(m.member_user_id)}
-                                className="px-3 py-1.5 rounded-lg border hover:bg-gray-50 text-sm"
-                              >
-                                Revocar
-                              </button>
                             </li>
                           );
                         })}
@@ -1302,7 +1324,7 @@ END:VCARD`;
                 {/* Esto solo se mostrará si el estado es 'deceased' */}
                 {formData.status_id === 'deceased' && (
                   // Ocupa las 2 columnas si es 'deceased'
-                  <div className="sm:col-span-2"> 
+                  <div className="sm:col-span-2">
                     <EditField label="Causa de Fallecimiento (Opcional)">
                       <textarea
                         value={formData.cause_of_death || ''} // Asegura que no sea null
@@ -1885,7 +1907,7 @@ function EventModal({ open, date, events, onClose, petId, eventTypes, onEventAdd
 
   return (
     <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50">
-      <div className="bg-white rounded-2xl shadow-xl w-full max-w-2xl p-6 relative max-h-[90vh] overflow-y-auto">
+      <div className="bg-white rounded-2xl shadow-xl w-full max-w-2xl p-4 sm:p-6 relative max-h-[90vh] overflow-y-auto">
         <button
           onClick={onClose}
           className="absolute top-3 right-3 text-gray-500 hover:text-gray-800"

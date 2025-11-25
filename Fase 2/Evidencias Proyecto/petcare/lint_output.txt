@@ -1,0 +1,19 @@
+﻿
+C:\Users\apine\OneDrive\Desktop\jaja\CAPSTONE-GRUPO-2\Fase 2\Evidencias Proyecto\petcare\src\components\PetDetail.jsx
+   40:10  error    'vaccines' is assigned a value but never used. Allowed unused vars must match /^[A-Z_]/u                        no-unused-vars
+   41:10  error    'regions' is assigned a value but never used. Allowed unused vars must match /^[A-Z_]/u                         no-unused-vars
+   42:10  error    'comunas' is assigned a value but never used. Allowed unused vars must match /^[A-Z_]/u                         no-unused-vars
+   42:19  error    'setComunas' is assigned a value but never used. Allowed unused vars must match /^[A-Z_]/u                      no-unused-vars
+   43:10  error    'clinics' is assigned a value but never used. Allowed unused vars must match /^[A-Z_]/u                         no-unused-vars
+   43:19  error    'setClinics' is assigned a value but never used. Allowed unused vars must match /^[A-Z_]/u                      no-unused-vars
+   44:10  error    'vetsByClinic' is assigned a value but never used. Allowed unused vars must match /^[A-Z_]/u                    no-unused-vars
+   44:24  error    'setVetsByClinic' is assigned a value but never used. Allowed unused vars must match /^[A-Z_]/u                 no-unused-vars
+   45:10  error    'vetsByComuna' is assigned a value but never used. Allowed unused vars must match /^[A-Z_]/u                    no-unused-vars
+   45:24  error    'setVetsByComuna' is assigned a value but never used. Allowed unused vars must match /^[A-Z_]/u                 no-unused-vars
+   52:22  error    'setInviteRole' is assigned a value but never used. Allowed unused vars must match /^[A-Z_]/u                   no-unused-vars
+   53:10  error    'inviteBusy' is assigned a value but never used. Allowed unused vars must match /^[A-Z_]/u                      no-unused-vars
+  509:9   error    'handleInvite' is assigned a value but never used. Allowed unused vars must match /^[A-Z_]/u                    no-unused-vars
+  574:6   warning  React Hook useEffect has a missing dependency: 'loadMembers'. Either include it or remove the dependency array  react-hooks/exhaustive-deps
+
+Ô£û 14 problems (13 errors, 1 warning)
+

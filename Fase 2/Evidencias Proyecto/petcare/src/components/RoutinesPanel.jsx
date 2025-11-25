@@ -6,7 +6,7 @@ import NewRoutineModal from "./NewRoutine.jsx";
 import ConfirmDialog from "./ConfirmDialog.jsx";
 
 // ⬇️ Importa el nuevo sub-componente
-import RoutineListItem from "./RoutineListItem.jsx"; 
+import RoutineListItem from "./RoutineListItem.jsx";
 
 export default function RoutinesPanel({ petId }) {
   const { user } = useAuth();
@@ -47,7 +47,7 @@ export default function RoutinesPanel({ petId }) {
         .eq("pet_id", petId)
         .order("active", { ascending: false })
         .order("time_local", { ascending: true }),
-      
+
       // Cargar Tareas de Hoy (Alerts)
       supabase
         .schema("petcare")
@@ -121,7 +121,7 @@ export default function RoutinesPanel({ petId }) {
       .from("routine")
       .delete()
       .eq("routine_id", r.routine_id);
-    
+
     if (!error) {
       // Dejamos que la suscripción de Supabase actualice la lista
       setRows((prev) => prev.filter((x) => x.routine_id !== r.routine_id));
@@ -138,10 +138,10 @@ export default function RoutinesPanel({ petId }) {
     const txt = upper.includes("FREQ=DAILY")
       ? "Diaria"
       : upper.includes("FREQ=WEEKLY")
-      ? "Semanal"
-      : upper.includes("FREQ=MONTHLY")
-      ? "Mensual"
-      : "Personalizada";
+        ? "Semanal"
+        : upper.includes("FREQ=MONTHLY")
+          ? "Mensual"
+          : "Personalizada";
     return (
       <span className="px-2 py-0.5 text-xs rounded-full bg-slate-100 text-slate-700">
         {txt}
@@ -187,9 +187,9 @@ export default function RoutinesPanel({ petId }) {
       {/* Body */}
       {open && (
         <div className="px-2 sm:px-4 pb-4">
-          {loading && ( <div className="p-4 text-sm text-slate-500">Cargando rutinas…</div> )}
-          {error && ( <div className="p-4 text-sm text-red-600">Error: {error}</div> )}
-          {!loading && !error && rows.length === 0 && ( <div className="p-4 text-sm text-slate-500">Sin rutinas aún.</div> )}
+          {loading && (<div className="p-4 text-sm text-slate-500">Cargando rutinas…</div>)}
+          {error && (<div className="p-4 text-sm text-red-600">Error: {error}</div>)}
+          {!loading && !error && rows.length === 0 && (<div className="p-4 text-sm text-slate-500">Sin rutinas aún.</div>)}
 
           {/* --- 3. Renderiza el NUEVO componente de lista --- */}
           <ul className="flex flex-col gap-3">
@@ -198,7 +198,7 @@ export default function RoutinesPanel({ petId }) {
               const alertForToday = loadingAlerts ? null : todayAlerts.find(
                 (a) => a.routine_id === r.routine_id
               );
-              
+
               return (
                 <RoutineListItem
                   key={r.routine_id}
@@ -213,7 +213,7 @@ export default function RoutinesPanel({ petId }) {
                   timeHHmm={timeHHmm}
                   ruleBadge={ruleBadge}
                   // Pasa la función de recarga para que el botón "Completar" pueda usarla
-                  onRefresh={fetchData} 
+                  onRefresh={fetchData}
                 />
               );
             })}
@@ -222,7 +222,7 @@ export default function RoutinesPanel({ petId }) {
       )}
 
       {/* Renderizado de Modales */}
-      
+
       {/* Modal para Nueva Rutina o Edición */}
       {modalMode !== "closed" && (
         <NewRoutineModal

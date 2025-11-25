@@ -1,9 +1,8 @@
 // src/components/RoutineListItem.jsx
 import React, { useState } from "react";
-import { supabase } from "../supabaseClient.js";
+import { supabase } from "../supabaseClient";
 import { useAuth } from "../context/AuthContext.jsx";
 
-// Componente para un solo ítem en la lista de RoutinesPanel
 export default function RoutineListItem({
   routine,
   alert,
@@ -18,41 +17,39 @@ export default function RoutineListItem({
   const [isExpanded, setIsExpanded] = useState(false);
   const [isCompleting, setIsCompleting] = useState(false);
 
-  // La alerta es "completible" si existe Y está pendiente
   const canComplete = alert && (alert.status_id === 'scheduled' || alert.status_id === 'sent');
 
   const handleComplete = async () => {
+    // ... (tu lógica handleComplete sin cambios) ...
     if (!canComplete) return;
-
     setIsCompleting(true);
     const { error } = await supabase
       .schema('petcare')
       .from('alert')
       .update({ status_id: 'completed', completed_at: new Date().toISOString(), completed_by: user.id })
       .eq('alert_id', alert.alert_id);
-    
+
     if (error) {
       alert(error.message);
-      setIsCompleting(false);
     } else {
-      // Dispara la recarga en el padre y el evento global
-      onRefresh(); 
+      onRefresh();
       window.dispatchEvent(new Event('alertsChanged'));
-      // No necesitamos setIsCompleting(false) porque el componente se recargará
-      // y 'isCompleting' volverá a false por defecto.
-      setIsExpanded(false); // Cierra el acordeón
     }
+    setIsCompleting(false);
+    setIsExpanded(false);
   };
 
   return (
-    <li className="flex flex-col rounded-xl border transition-all duration-200">
+    <li className="flex flex-col rounded-xl border transition-all duration-200 bg-white"> {/* Agregué bg-white por si acaso */}
+
       {/* --- Fila Principal (Clickable) --- */}
       <div
-        className="flex items-center justify-between p-4 cursor-pointer hover:bg-gray-50"
+        className="flex flex-col sm:flex-row sm:items-center justify-between p-4 cursor-pointer hover:bg-gray-50 gap-4" // ⬅️ Cambio clave: flex-col en móvil, gap-4
         onClick={() => setIsExpanded(prev => !prev)}
       >
-        <div className="flex items-center gap-3">
-          <div className="text-2xl">🍽️</div> {/* TODO: Icono dinámico */}
+        {/* Info de la Rutina */}
+        <div className="flex items-start sm:items-center gap-3">
+          <div className="text-2xl mt-1 sm:mt-0">🍽️</div> {/* Icono alineado arriba en móvil */}
           <div>
             <div className="flex flex-wrap items-center gap-2">
               <span className={`font-medium ${!routine.active ? 'text-gray-400 line-through' : ''}`}>
@@ -60,7 +57,7 @@ export default function RoutineListItem({
               </span>
               {ruleBadge(routine.rrule)}
             </div>
-            <div className="text-sm text-slate-500 flex items-center gap-1">
+            <div className="text-sm text-slate-500 flex items-center gap-1 mt-1">
               <span>🕒</span>
               <span>{timeHHmm(routine.time_local)}</span>
             </div>
@@ -68,27 +65,31 @@ export default function RoutineListItem({
         </div>
 
         {/* Botones de Acción (Editar/Borrar) */}
-        <div className="flex items-center gap-2" onClick={(e) => e.stopPropagation()}>
+        {/* En móvil: ancho completo y justificados al final. En escritorio: auto. */}
+        <div
+          className="flex items-center justify-end gap-2 w-full sm:w-auto pt-2 sm:pt-0 border-t sm:border-t-0 border-gray-100"
+          onClick={(e) => e.stopPropagation()}
+        >
           <button
-            className={`rounded-lg border px-2.5 py-1.5 text-sm ${
+            className={`rounded-lg border px-3 py-2 text-sm flex-1 sm:flex-none flex justify-center ${ // Botones más grandes en móvil (flex-1)
               routine.active
                 ? "border-blue-200 text-blue-700 bg-blue-50"
                 : "border-slate-200 text-slate-600"
-            }`}
+              }`}
             onClick={onToggleActive}
             title={routine.active ? "Desactivar Regla" : "Activar Regla"}
           >
             🔔
           </button>
           <button
-            className="rounded-lg border px-2.5 py-1.5 text-sm text-slate-700"
+            className="rounded-lg border px-3 py-2 text-sm text-slate-700 flex-1 sm:flex-none flex justify-center"
             onClick={onEdit}
             title="Editar Regla"
           >
             ✏️
           </button>
           <button
-            className="rounded-lg border px-2.5 py-1.5 text-sm text-red-600 border-red-200"
+            className="rounded-lg border px-3 py-2 text-sm text-red-600 border-red-200 flex-1 sm:flex-none flex justify-center"
             onClick={onDelete}
             title="Eliminar Regla"
           >
@@ -97,15 +98,13 @@ export default function RoutineListItem({
         </div>
       </div>
 
-      {/* --- Panel Expandible (Para Completar) --- */}
+      {/* --- Panel Expandible --- */}
       {isExpanded && (
         <div className="p-4 border-t bg-gray-50/50">
+          {/* ... (tu contenido expandible sin cambios) ... */}
           {canComplete ? (
-            // Si hay una alerta PENDIENTE para hoy
             <div className="flex flex-col items-center">
-              <p className="text-sm text-gray-700 mb-3">
-                ¿Completaste esta tarea hoy?
-              </p>
+              <p className="text-sm text-gray-700 mb-3">¿Completaste esta tarea hoy?</p>
               <button
                 onClick={handleComplete}
                 disabled={isCompleting}
@@ -115,7 +114,6 @@ export default function RoutineListItem({
               </button>
             </div>
           ) : (
-            // Si NO hay alerta pendiente para hoy
             <p className="text-sm text-gray-500 text-center">
               {alert ? "Esta tarea ya fue completada hoy." : "No hay una alerta programada para esta rutina hoy."}
             </p>
