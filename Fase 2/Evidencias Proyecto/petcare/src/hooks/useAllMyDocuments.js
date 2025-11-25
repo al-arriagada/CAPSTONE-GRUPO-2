@@ -5,13 +5,13 @@ import { useAuth } from '../context/AuthContext';
 export default function useAllMyDocuments() {
   // --- CAMBIO 1: Obtener 'loadingSession' de useAuth ---
   const { user, loadingSession } = useAuth();
-  
+
   const [documents, setDocuments] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
 
   const fetchAllDocuments = useCallback(async () => {
-    
+
     // --- CAMBIO 2: Añadir la lógica de espera ---
 
     // 1. Si AuthContext sigue "Cargando...", no hacer nada.
@@ -25,7 +25,7 @@ export default function useAllMyDocuments() {
       setDocuments([]); // Aseguramos que esté vacío
       return;
     }
-    
+
     // 3. Si llegamos aquí, loadingSession=false y user=existe.
     //    ¡Es seguro cargar los datos!
     setLoading(true);
@@ -62,7 +62,7 @@ export default function useAllMyDocuments() {
         .order('created_at', { ascending: false });
 
       if (docsError) throw docsError;
-      
+
       // 3. Enriquecer los documentos con su URL pública para la descarga
       const enrichedDocuments = (docs || []).map(doc => {
         const { data: { publicUrl } } = supabase.storage
@@ -82,9 +82,9 @@ export default function useAllMyDocuments() {
     } finally {
       setLoading(false);
     }
-  
-  // --- CAMBIO 3: Añadir 'loadingSession' a las dependencias ---
-  }, [user, loadingSession]); 
+
+    // --- CAMBIO 3: Añadir 'loadingSession' a las dependencias ---
+  }, [user?.id, loadingSession]);
 
   useEffect(() => {
     fetchAllDocuments();

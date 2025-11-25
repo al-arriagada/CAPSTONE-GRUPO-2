@@ -4,10 +4,10 @@ import { supabase } from "../supabaseClient";
 import { useAuth } from '../context/AuthContext'; // <-- 1. Importamos useAuth
 
 export default function useProfile() { // <-- 2. YA NO recibe 'user' como prop
-  
+
   // 3. Obtenemos el usuario y el estado de carga DESDE EL CONTEXTO
-  const { user, loadingSession } = useAuth(); 
-  
+  const { user, loadingSession } = useAuth();
+
   const [profile, setProfile] = useState(null);
   // 4. El loading AHORA DEPENDE del loadingSession
   const [loading, setLoading] = useState(true);
@@ -16,7 +16,7 @@ export default function useProfile() { // <-- 2. YA NO recibe 'user' como prop
     let abort = false;
 
     async function load() {
-      
+
       // 5. AÑADIMOS LA LÓGICA DE ESPERA
       if (loadingSession) {
         return; // No hacer nada si el auth sigue cargando
@@ -49,9 +49,9 @@ export default function useProfile() { // <-- 2. YA NO recibe 'user' como prop
     return () => {
       abort = true;
     };
-    
-  // 6. Añadimos 'loadingSession' a las dependencias
-  }, [user, loadingSession]); 
+
+    // 6. Añadimos 'loadingSession' a las dependencias
+  }, [user?.id, loadingSession]);
 
   // Esta lógica de 'displayName' sigue funcionando
   // porque 'user' lo obtenemos del context

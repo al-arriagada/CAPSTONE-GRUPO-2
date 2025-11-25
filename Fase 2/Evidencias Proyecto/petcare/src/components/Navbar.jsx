@@ -14,7 +14,7 @@ export default function Navbar() {
   const { user, signOut, loading } = useAuth();
   const { profile, displayName, loading: loadingProfile } = useProfile(user);
   const { role, loading: loadingRole } = useUserRole(); // Obtiene 'owner', 'vet', 'caregiver'
-  const {count, loadingAlerts} = useAlertsCount();
+  const { count, loadingAlerts } = useAlertsCount();
   const [isPopoverOpen, setIsPopoverOpen] = useState(false);
 
   const handleLogout = async () => {
@@ -42,21 +42,22 @@ export default function Navbar() {
     ? role === "vet"
       ? "/vet"
       : role === "caregiver" // <-- AÑADIDO: Caso Caregiver
-      ? "/caregiver"        // <-- Ruta para Caregiver
-      : "/app"              // Default a owner/app
+        ? "/caregiver"        // <-- Ruta para Caregiver
+        : "/app"              // Default a owner/app
     : "/";                  // Sin sesión, va al landing
 
   // --- 👇 Ruta del Perfil según rol (ACTUALIZADO) ---
   const profilePath = role === "vet"
     ? "/vet/profile"
     : role === "caregiver" // <-- AÑADIDO: Caso Caregiver
-    ? "/caregiver/profile" // <-- Ruta para Caregiver (ajusta si es diferente)
-    : "/app/profile";      // Default a owner/app
+      ? "/caregiver/profile" // <-- Ruta para Caregiver (ajusta si es diferente)
+      : "/app/profile";      // Default a owner/app
 
   return (
     <nav className="sticky top-0 z-50 border-b bg-white/80 backdrop-blur">
-      <div className="mx-auto flex h-14 max-w-7xl items-center justify-between px-4 sm:px-6 lg:px-8">
-        {/* Left: logo (Usa homePath dinámico) */}
+      <div className="mx-auto flex h-14 max-w-7xl items-center justify-between px-4 sm:px-6 lg:px-8 gap-3">
+
+        {/* 1. IZQUIERDA: Logo */}
         <div className="flex items-center gap-2">
           <Link to={homePath} className="flex items-center gap-2">
             <span className="text-xl">🐾</span>
@@ -64,114 +65,102 @@ export default function Navbar() {
           </Link>
         </div>
 
-        {/* Center: links (ocultos en mobile) 
-        <div className="hidden items-center gap-4 md:flex">
+        {/* 2. DERECHA: Acciones (Campana + Usuario/Login + Hamburguesa) */}
+        <div className="flex items-center gap-2">
 
-          {user && !loadingRole && role === "owner" && (
-            <NavItem to="/app">Dashboard</NavItem>
+          {/* --- A. CAMPANITA (Visible SOLO si hay usuario) --- */}
+          {user && !loading && (
+            <div className="relative" ref={popoverRef}>
+              <button
+                onClick={() => setIsPopoverOpen(prev => !prev)}
+                className="relative inline-flex items-center justify-center p-2 rounded-full text-slate-600 hover:text-slate-900 hover:bg-slate-100 focus:outline-none focus:ring-2 focus:ring-black/20"
+              >
+                {/* Icono Campana */}
+                <span className="h-5 w-5 text-xl" aria-hidden="true"> <FaRegBell /> </span>
 
-          )}
-
-          {user && !loadingRole && role === "vet" && (
-            <NavItem to="/vet">Pacientes</NavItem>
-
-          )}
-
-          {user && !loadingRole && role === "caregiver" && (
-            <>
-              /* Ejemplo: Si quieres un enlace a la home del cuidador 
-              <NavItem to="/caregiver">Dashboard</NavItem>
-              /* Ejemplo: <NavItem to="/caregiver/invitations">Invitaciones</NavItem> 
-              /* Añade aquí los enlaces principales que necesite el cuidador 
-            </>
-          )}
-        </div>
-        */}
-
-        {/* Right: auth actions */}
-<div className="hidden items-center gap-2 md:flex">
-
-          {/* Menú Usuario / Login/Signup */}
-          {loading || loadingRole ? ( // Muestra carga si auth o rol están cargando
-            <div className="h-8 w-24 animate-pulse rounded-md bg-gray-200" />
-          ) : user ? (
-            <>
-              {/* ⬇️ --- AQUÍ VA LA CAMPANITA --- ⬇️ */}
-              {/* Mueve el bloque de notificaciones aquí dentro */}
-              <div className="relative" ref={popoverRef}>
-                <button
-                  onClick={() => setIsPopoverOpen(prev => !prev)}
-                  className="relative inline-flex items-center justify-center p-2 rounded-full text-slate-600 hover:text-slate-900 hover:bg-slate-100 focus:outline-none focus:ring-2 focus:ring-black/20"
-                >
-                  <span className="h-5 w-5" aria-hidden="true"> <FaRegBell/> </span>
-                  {!loadingAlerts && count > 0 && (
-                    <span className="absolute top-0 right-0 -translate-y-1/3 translate-x-1/3 inline-flex h-[18px] min-w-[18px] items-center justify-center rounded-full bg-black px-1 text-[10px] font-semibold text-white ring-2 ring-white">
-                      {count}
-                    </span>
-                  )}
-                </button>
-                {isPopoverOpen && (
-                  <AlertsPopover onClose={() => setIsPopoverOpen(false)} />
+                {/* Contador Rojo */}
+                {!loadingAlerts && count > 0 && (
+                  <span className="absolute top-0 right-0 -translate-y-1/3 translate-x-1/3 inline-flex h-[18px] min-w-[18px] items-center justify-center rounded-full bg-black px-1 text-[10px] font-semibold text-white ring-2 ring-white">
+                    {count}
+                  </span>
                 )}
-              </div>
+              </button>
 
+              {/* Popover de Alertas */}
+              {isPopoverOpen && (
+                <div className="
+                    /* Estilos móviles: fijo y centrado en la pantalla */
+                    fixed left-4 right-4 top-16 z-50 w-auto
+                    /* Estilos escritorio: absoluto y alineado a la derecha */
+                    sm:absolute sm:top-full sm:right-0 sm:left-auto sm:w-96 sm:mt-2
+                  ">
+                  <AlertsPopover onClose={() => setIsPopoverOpen(false)} />
+                </div>
+              )}
+            </div>
+          )}
 
-              {/* El resto de tu menú de usuario */}
+          {/* --- B. MENÚ ESCRITORIO (Usuario o Login - Oculto en móvil) --- */}
+          <div className="hidden md:flex items-center gap-4">
+            {loading || loadingRole ? (
+              <div className="h-8 w-24 animate-pulse rounded-md bg-gray-200" />
+            ) : user ? (
               <UserMenu
                 user={user}
                 name={displayName}
                 avatarPath={profile?.avatar_url}
                 loadingName={loadingProfile}
                 onLogout={handleLogout}
-                avatarTo={profilePath} // <-- Usa profilePath dinámico
+                avatarTo={profilePath}
               />
-            </>
-          ) : (
-            <>
-              {/* La campanita ya no está aquí */}
-              <Link to="/signin" className="rounded-xl border px-3 py-1.5 text-sm hover:bg-gray-50">
-                Iniciar sesión
-              </Link>
-              <Link to="/signup" className="rounded-xl bg-black px-3 py-1.5 text-sm text-white hover:opacity-90">
-                Registrarse
-              </Link>
-            </>
-          )}
-        </div>
+            ) : (
+              <>
+                <Link to="/signin" className="rounded-xl border px-3 py-1.5 text-sm hover:bg-gray-50">
+                  Iniciar sesión
+                </Link>
+                <Link to="/signup" className="rounded-xl bg-black px-3 py-1.5 text-sm text-white hover:opacity-90">
+                  Registrarse
+                </Link>
+              </>
+            )}
+          </div>
 
-        {/* Mobile toggle */}
-        <button
-          className="inline-flex items-center rounded-xl border px-2 py-1 md:hidden"
-          onClick={() => setOpen((v) => !v)}
-          aria-label="Abrir menú"
-        >
-          ☰
-        </button>
+          {/* --- C. BOTÓN HAMBURGUESA (Solo móvil) --- */}
+          <button
+            className="inline-flex items-center rounded-xl border px-2 py-1 md:hidden"
+            onClick={() => setOpen((v) => !v)}
+            aria-label="Abrir menú"
+          >
+            {/* Icono de menú simple (puedes cambiarlo por tu icono preferido) */}
+            <svg className="h-6 w-6 text-slate-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
+            </svg>
+          </button>
+
+        </div> {/* Fin DERECHA */}
       </div>
 
-      {/* Mobile menu */}
+      {/* 3. MENÚ MÓVIL DESPLEGABLE (Contenido extra) */}
       {open && (
         <div className="border-t bg-white md:hidden">
           <div className="mx-auto flex max-w-7xl flex-col gap-2 px-4 py-3">
-            <div className="h-px bg-gray-200 my-2" />
 
-            {loading || loadingRole ? ( // Muestra carga si auth o rol están cargando
+            {loading || loadingRole ? (
               <div className="h-8 w-24 animate-pulse rounded-md bg-gray-200" />
             ) : user ? (
               <>
-                {/* Info Usuario (Usa profilePath dinámico) */}
-                <div className="flex items-center justify-between">
+                {/* Info Usuario Móvil */}
+                <div className="flex items-center justify-between mb-2">
                   <div className="flex items-center gap-3">
                     <Avatar
                       fallback={user?.email}
                       avatarUrl={profile?.avatar_url}
-                      to={profilePath} // <-- Usa profilePath dinámico
+                      to={profilePath}
                     />
                     <div className="text-sm">
                       <div className="font-medium leading-tight">
                         {loadingProfile ? "Cargando..." : (displayName || user?.email)}
                       </div>
-                      <div className="text-gray-500">Sesión activa</div>
                     </div>
                   </div>
                   <button
@@ -182,27 +171,17 @@ export default function Navbar() {
                   </button>
                 </div>
 
-                {/* Enlaces principales según rol (Móvil) */}
-                <div className="mt-2">
-                  <NavItem
-                    to={homePath} // <-- Usa homePath dinámico
-                    onClick={() => setOpen(false)}
-                  >
-                    {/* --- 👇 Texto según rol --- */}
-                    {role === "vet" ? "Pacientes"
-                     : role === "caregiver" ? "Dashboard Cuidador" // Ajusta texto si prefieres
-                     : "Dashboard Dueño"}
-                  </NavItem>
-                  {/* --- 👇 AÑADIDO: Otros enlaces para Caregiver (Ej: Invitaciones) --- */}
-                   {role === "caregiver" && (
-                       <NavItem to="/caregiver/invitations" onClick={() => setOpen(false)}>Invitaciones</NavItem>
-                   )}
-                   {/* Añade más NavItems si son necesarios para otros roles en móvil */}
+                {/* Enlaces Móviles */}
+                <div className="flex flex-col gap-1">
+                  <Link to={homePath} onClick={() => setOpen(false)} className="block py-2 text-sm font-medium text-gray-700 hover:text-black">
+                    {role === "vet" ? "Pacientes" : "Dashboard"}
+                  </Link>
+                  {/* Agrega aquí más enlaces si los necesitas */}
                 </div>
               </>
             ) : (
-              // Botones Login/Signup (Móvil)
-              <div className="flex gap-2">
+              // Botones Móviles Login/Signup
+              <div className="flex gap-2 mt-2">
                 <Link to="/signin" onClick={() => setOpen(false)} className="flex-1 rounded-xl border px-3 py-1.5 text-center text-sm hover:bg-gray-50">
                   Iniciar sesión
                 </Link>
