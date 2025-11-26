@@ -20,7 +20,7 @@ const WEEKDAYS = [
 
 export default function NewRoutineModal({ petId, onClose, onCreated, routineToEdit = null }) {
   const { user } = useAuth();
-  
+
   // Definir si estamos en modo Edición
   const isEditMode = Boolean(routineToEdit);
 
@@ -63,7 +63,7 @@ export default function NewRoutineModal({ petId, onClose, onCreated, routineToEd
       setTypeId(routineToEdit.routine_type_id || "");
       setTime(routineToEdit.time_local || "");
       setActive(routineToEdit.active);
-      
+
       const rrule = routineToEdit.rrule;
       if (!rrule) {
         setFreq("once");
@@ -74,7 +74,7 @@ export default function NewRoutineModal({ petId, onClose, onCreated, routineToEd
       } else if (rrule.includes("FREQ=MONTHLY")) {
         setFreq("monthly");
       }
-      
+
       // Extraer 'UNTIL' (fecha de fin) del rrule si existe
       if (rrule && rrule.includes("UNTIL=")) {
         const untilPart = rrule.split('UNTIL=')[1];
@@ -107,16 +107,16 @@ export default function NewRoutineModal({ petId, onClose, onCreated, routineToEd
 
   const buildRrule = () => {
     if (freq === "once") return null;
-    
+
     let rule = `RRULE:FREQ=${freq.toUpperCase()}`;
-    
+
     // Añadir BYDAY si es semanal y hay días seleccionados
     if (freq === "weekly" && selectedWeekdays.length > 0) {
       // Ordenar los días
       const orderedDays = WEEKDAYS.map(d => d.id).filter(id => selectedWeekdays.includes(id));
       rule += `;BYDAY=${orderedDays.join(',')}`;
     }
-    
+
     // Añadir UNTIL si hay fecha de fin
     if (endDate) {
       const [y, m, d] = endDate.split("-").map(Number);
@@ -127,7 +127,7 @@ export default function NewRoutineModal({ petId, onClose, onCreated, routineToEd
         until.getUTCDate().toString().padStart(2, "0");
       rule += `;UNTIL=${yyyymmdd}T235959Z`;
     }
-    
+
     return rule;
   };
 
@@ -147,7 +147,7 @@ export default function NewRoutineModal({ petId, onClose, onCreated, routineToEd
     }
     return dt;
   };
-  
+
   // Lógica de CREAR
   const handleCreate = async () => {
     const rrule = buildRrule();
@@ -172,35 +172,35 @@ export default function NewRoutineModal({ petId, onClose, onCreated, routineToEd
 
     // 2) primera alerta (email)
 
-      // Define los canales de notificación basado en el checkbox
-      const alertChannels = enableAlerts ? ["email"] : []; // Si está marcado -> email, si no -> array vacío
+    // Define los canales de notificación basado en el checkbox
+    const alertChannels = enableAlerts ? ["email"] : []; // Si está marcado -> email, si no -> array vacío
 
-      // ¡SIEMPRE crea la fila 'alert'!
-      const { error: aErr } = await supabase
-        .schema("petcare")
-        .from("alert")
-        .insert({
-          routine_id: routine.routine_id,
-          pet_id: routine.pet_id,
-          scheduled_at: firstAt.toISOString(),
-          status_id: "scheduled",
-          user_id: user.id,
-          title: routine.title,
-          body: description?.trim() || "",
-          channels: alertChannels, // ⬅️ Usa la variable
-        });
-      if (aErr) throw aErr;
-      // ⬆️ FIN DEL CAMBIO ⬆️
+    // ¡SIEMPRE crea la fila 'alert'!
+    const { error: aErr } = await supabase
+      .schema("petcare")
+      .from("alert")
+      .insert({
+        routine_id: routine.routine_id,
+        pet_id: routine.pet_id,
+        scheduled_at: firstAt.toISOString(),
+        status_id: "scheduled",
+        user_id: user.id,
+        title: routine.title,
+        body: description?.trim() || "",
+        channels: alertChannels, // ⬅️ Usa la variable
+      });
+    if (aErr) throw aErr;
+    // ⬆️ FIN DEL CAMBIO ⬆️
 
-      setSaving(false);
-      onCreated?.();
-      onClose?.();
+    setSaving(false);
+    onCreated?.();
+    onClose?.();
   };
-  
+
   // Lógica de ACTUALIZAR
   const handleUpdate = async () => {
     const rrule = buildRrule();
-    
+
     const { error: rErr } = await supabase
       .schema("petcare")
       .from("routine")
@@ -212,7 +212,7 @@ export default function NewRoutineModal({ petId, onClose, onCreated, routineToEd
         title: title.trim(),
       })
       .eq("routine_id", routineToEdit.routine_id);
-      
+
     if (rErr) throw rErr;
   };
 
@@ -225,7 +225,7 @@ export default function NewRoutineModal({ petId, onClose, onCreated, routineToEd
     if (!title.trim() || !typeId || !time) {
       return setErr("Completa título, tipo y hora.");
     }
-    
+
     // En modo edición, no se requiere 'startDate'
     if (!isEditMode && !startDate) {
       return setErr("Completa la fecha de inicio.");
@@ -249,7 +249,7 @@ export default function NewRoutineModal({ petId, onClose, onCreated, routineToEd
       setSaving(false);
       onCreated?.(); // Refresca la lista
       onClose?.();   // Cierra el modal
-      
+
       if (createdNewAlert) {
         window.dispatchEvent(new Event('alertsChanged'));
       }
@@ -263,9 +263,9 @@ export default function NewRoutineModal({ petId, onClose, onCreated, routineToEd
   };
 
   return createPortal(
-    <div className="fixed inset-0 z-[9999] flex items-center justify-center">
+    <div className="fixed inset-0 z-[9999] flex items-center justify-center px-3">
       <div className="absolute inset-0 bg-black/40" onClick={onClose} />
-      <div className="relative bg-white rounded-2xl w-full max-w-xl p-6 shadow-xl max-h-[90vh] overflow-y-auto">
+      <div className="relative bg-white rounded-2xl w-full max-w-[min(576px,calc(100vw-24px))] p-4 sm:p-6 shadow-xl max-h-[90vh] overflow-y-auto overflow-x-hidden">
         <div className="flex items-start justify-between mb-1">
           <h3 className="text-lg font-semibold">
             {isEditMode ? "Editar Rutina" : "Nueva Rutina"}
@@ -278,9 +278,9 @@ export default function NewRoutineModal({ petId, onClose, onCreated, routineToEd
             ✕
           </button>
         </div>
-        
-        <p className="text-sm text-gray-600 mb-4">
-          {isEditMode 
+
+        <p className="text-xs sm:text-sm text-gray-600 mb-3 sm:mb-4">
+          {isEditMode
             ? "Modifica los detalles de la regla de rutina."
             : "Define la regla y programamos la primera alerta automáticamente."
           }
@@ -292,11 +292,11 @@ export default function NewRoutineModal({ petId, onClose, onCreated, routineToEd
           </div>
         )}
 
-        <form onSubmit={onSubmit} className="space-y-4">
+        <form onSubmit={onSubmit} className="space-y-3 sm:space-y-4">
           <div>
-            <label className="block text-sm font-medium mb-1">Título *</label>
+            <label className="block text-xs sm:text-sm font-medium mb-1">Título *</label>
             <input
-              className="w-full border rounded-lg px-3 py-2"
+              className="w-full border rounded-lg px-3 py-2 text-sm"
               placeholder="Ej: Desayuno, Paseo matutino…"
               value={title}
               onChange={(e) => setTitle(e.target.value)}
@@ -307,9 +307,9 @@ export default function NewRoutineModal({ petId, onClose, onCreated, routineToEd
           {!isEditMode && (
             <>
               <div>
-                <label className="block text-sm font-medium mb-1">Descripción</label>
+                <label className="block text-xs sm:text-sm font-medium mb-1">Descripción</label>
                 <textarea
-                  className="w-full border rounded-lg px-3 py-2"
+                  className="w-full border rounded-lg px-3 py-2 text-sm"
                   placeholder="Notas, instrucciones, dosis…"
                   rows={3}
                   value={description}
@@ -319,11 +319,12 @@ export default function NewRoutineModal({ petId, onClose, onCreated, routineToEd
             </>
           )}
 
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          <div className="grid grid-cols-1 gap-3">
             <div>
-              <label className="block text-sm font-medium mb-1">Tipo *</label>
+              <label className="block text-xs sm:text-sm font-medium mb-1">Tipo *</label>
               <select
-                className="w-full border rounded-lg px-3 py-2 bg-white"
+                className="w-full border rounded-lg px-3 py-2 bg-white text-sm appearance-none"
+                style={{ maxWidth: '100%' }}
                 value={typeId}
                 onChange={(e) => setTypeId(e.target.value)}
                 required
@@ -338,12 +339,14 @@ export default function NewRoutineModal({ petId, onClose, onCreated, routineToEd
             </div>
 
             <div>
-              <label className="block text-sm font-medium mb-1">Frecuencia *</label>
+              <label className="block text-xs sm:text-sm font-medium mb-1">Frecuencia *</label>
               <select
-                className="w-full border rounded-lg px-3 py-2 bg-white"
+                className="w-full border rounded-lg px-3 py-2 bg-white text-sm appearance-none"
+                style={{ maxWidth: '100%' }}
                 value={freq}
-                onChange={(e) => {setFreq(e.target.value);
-                  if (e.target.value !=='weekly') setSelectedWeekdays([]) 
+                onChange={(e) => {
+                  setFreq(e.target.value);
+                  if (e.target.value !== 'weekly') setSelectedWeekdays([])
 
                 }}
               >
@@ -354,19 +357,18 @@ export default function NewRoutineModal({ petId, onClose, onCreated, routineToEd
             </div>
 
             {freq === 'weekly' && (
-              <div className="pt-2">
-                <label className="block text-sm font-medium mb-2">Repetir los días:</label>
-                <div className="flex flex-wrap gap-2">
+              <div className="col-span-1">
+                <label className="block text-xs sm:text-sm font-medium mb-2">Repetir los días:</label>
+                <div className="flex flex-wrap gap-1.5 sm:gap-2">
                   {WEEKDAYS.map(day => (
                     <button
                       type="button"
                       key={day.id}
                       onClick={() => handleWeekdayChange(day.id)}
-                      className={`px-3 py-1.5 border rounded-full text-xs font-medium ${
-                        selectedWeekdays.includes(day.id) 
-                          ? 'bg-black text-white border-black' 
-                          : 'bg-white text-gray-700 hover:bg-gray-50'
-                      }`}
+                      className={`px-3 py-1.5 border rounded-full text-xs font-medium ${selectedWeekdays.includes(day.id)
+                        ? 'bg-black text-white border-black'
+                        : 'bg-white text-gray-700 hover:bg-gray-50'
+                        }`}
                     >
                       {day.label}
                     </button>
@@ -379,10 +381,10 @@ export default function NewRoutineModal({ petId, onClose, onCreated, routineToEd
             )}
 
             <div>
-              <label className="block text-sm font-medium mb-1">Hora *</label>
+              <label className="block text-xs sm:text-sm font-medium mb-1">Hora *</label>
               <input
                 type="time"
-                className="w-full border rounded-lg px-3 py-2"
+                className="w-full border rounded-lg px-3 py-2 text-sm"
                 value={time}
                 onChange={(e) => setTime(e.target.value)}
                 required
@@ -391,10 +393,10 @@ export default function NewRoutineModal({ petId, onClose, onCreated, routineToEd
 
             {!isEditMode && (
               <div>
-                <label className="block text-sm font-medium mb-1">Inicio *</label>
+                <label className="block text-xs sm:text-sm font-medium mb-1">Inicio *</label>
                 <input
                   type="date"
-                  className="w-full border rounded-lg px-3 py-2"
+                  className="w-full border rounded-lg px-3 py-2 text-sm"
                   value={startDate}
                   onChange={(e) => setStartDate(e.target.value)}
                   required
@@ -403,18 +405,18 @@ export default function NewRoutineModal({ petId, onClose, onCreated, routineToEd
             )}
 
             <div>
-              <label className="block text-sm font-medium mb-1">Fin (opcional)</label>
+              <label className="block text-xs sm:text-sm font-medium mb-1">Fin (opcional)</label>
               <input
                 type="date"
-                className="w-full border rounded-lg px-3 py-2"
+                className="w-full border rounded-lg px-3 py-2 text-sm"
                 value={endDate}
                 onChange={(e) => setEndDate(e.target.value)}
               />
             </div>
           </div>
 
-          <div className="flex items-center gap-6">
-            <label className="flex items-center gap-2 text-sm">
+          <div className="flex flex-col sm:flex-row sm:items-center gap-3 sm:gap-6">
+            <label className="flex items-center gap-2 text-xs sm:text-sm">
               <input
                 type="checkbox"
                 checked={active}
@@ -422,9 +424,9 @@ export default function NewRoutineModal({ petId, onClose, onCreated, routineToEd
               />
               Rutina activa
             </label>
-            
+
             {!isEditMode && (
-              <label className="flex items-center gap-2 text-sm">
+              <label className="flex items-center gap-2 text-xs sm:text-sm">
                 <input
                   type="checkbox"
                   checked={enableAlerts}
@@ -435,18 +437,18 @@ export default function NewRoutineModal({ petId, onClose, onCreated, routineToEd
             )}
           </div>
 
-          <div className="flex justify-end gap-2">
+          <div className="flex justify-end gap-2 pt-2">
             <button
               type="button"
               onClick={onClose}
-              className="px-4 py-2 border rounded-lg hover:bg-gray-50"
+              className="px-3 sm:px-4 py-2 border rounded-lg hover:bg-gray-50 text-sm"
               disabled={saving}
             >
               Cancelar
             </button>
             <button
               type="submit"
-              className="px-4 py-2 rounded-lg text-white bg-black hover:bg-gray-800 disabled:opacity-50"
+              className="px-3 sm:px-4 py-2 rounded-lg text-white bg-black hover:bg-gray-800 disabled:opacity-50 text-sm"
               disabled={saving}
             >
               {saving ? "Guardando…" : (isEditMode ? "Guardar Cambios" : "Crear Rutina")}

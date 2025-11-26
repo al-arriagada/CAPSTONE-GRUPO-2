@@ -836,10 +836,10 @@ END:VCARD`;
         {!isEditing && (
           <>
             <div className="bg-white rounded-t-2xl border-t border-x shadow-sm overflow-x-auto">
-              <div className="flex border-b">
+              <div className="flex border-b px-0 sm:px-8">
                 <button
                   onClick={() => setActiveTab("id")}
-                  className={`min-w-max overflow-x-auto px-6 py-4 text-sm font-medium transition-colors ${activeTab === "id"
+                  className={`min-w-max sm:flex-1 px-6 py-4 text-sm font-medium transition-colors ${activeTab === "id"
                     ? "border-b-2 border-black text-black"
                     : "text-gray-500 hover:text-gray-700"
                     }`}
@@ -848,7 +848,7 @@ END:VCARD`;
                 </button>
                 <button
                   onClick={() => setActiveTab("perfil")}
-                  className={`min-w-max overflow-x-auto px-6 py-4 text-sm font-medium transition-colors ${activeTab === "perfil"
+                  className={`min-w-max sm:flex-1 px-6 py-4 text-sm font-medium transition-colors ${activeTab === "perfil"
                     ? "border-b-2 border-black text-black"
                     : "text-gray-500 hover:text-gray-700"
                     }`}
@@ -857,7 +857,7 @@ END:VCARD`;
                 </button>
                 <button
                   onClick={() => setActiveTab("historial")}
-                  className={`min-w-max overflow-x-auto px-6 py-4 text-sm font-medium transition-colors ${activeTab === "historial"
+                  className={`min-w-max sm:flex-1 px-6 py-4 text-sm font-medium transition-colors ${activeTab === "historial"
                     ? "border-b-2 border-black text-black"
                     : "text-gray-500 hover:text-gray-700"
                     }`}
@@ -866,7 +866,7 @@ END:VCARD`;
                 </button>
                 {canEdit && (<button
                   onClick={() => setActiveTab("rutinas")}
-                  className={`min-w-max overflow-x-auto px-6 py-4 text-sm font-medium transition-colors ${activeTab === "rutinas"
+                  className={`min-w-max sm:flex-1 px-6 py-4 text-sm font-medium transition-colors ${activeTab === "rutinas"
                     ? "border-b-2 border-black text-black"
                     : "text-gray-500 hover:text-gray-700"
                     }`}
@@ -875,7 +875,7 @@ END:VCARD`;
                 </button>)}
                 {canEdit && (<button
                   onClick={() => setActiveTab("colaboradores")}
-                  className={`min-w-max overflow-x-auto px-6 py-4 text-sm font-medium transition-colors ${activeTab === "colaboradores"
+                  className={`min-w-max sm:flex-1 px-6 py-4 text-sm font-medium transition-colors ${activeTab === "colaboradores"
                     ? "border-b-2 border-black text-black"
                     : "text-gray-500 hover:text-gray-700"
                     }`}
@@ -885,7 +885,7 @@ END:VCARD`;
               </div>
             </div>
 
-            <div className="bg-white rounded-b-2xl border-x border-b shadow-sm p-8">
+            <div className="bg-white rounded-b-2xl border-x border-b shadow-sm p-3 sm:p-8">
               {activeTab === "id" && (
                 <div>
                   <div className="flex items-center gap-3 mb-6">
