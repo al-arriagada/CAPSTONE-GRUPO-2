@@ -1,7 +1,10 @@
 // src/pages/PetHealthReport.jsx
 import React, { useEffect, useMemo, useState } from "react";
 import { Link, useParams, useNavigate } from "react-router-dom";
+import { PDFDownloadLink } from '@react-pdf/renderer';
+import PetHealthReportPDF from './PetHealthReportPDF';
 import { supabase } from "../supabaseClient";
+import { generateWeightChartImage } from '../utils/chartGenerator';
 
 
 export default function PetHealthReport() {
@@ -14,6 +17,7 @@ export default function PetHealthReport() {
   const [owner, setOwner] = useState(null);
   const [events, setEvents] = useState([]);
   const [error, setError] = useState("");
+  const [weightChartImage, setWeightChartImage] = useState(null);
 
   useEffect(() => {
     (async () => {
@@ -181,6 +185,16 @@ export default function PetHealthReport() {
       .sort((a, b) => new Date(a.date) - new Date(b.date)); // más antiguo → nuevo
   }, [events]);
 
+  // Generar gráfico de peso cuando hay datos disponibles
+  useEffect(() => {
+    (async () => {
+      if (weightVariations && weightVariations.length > 0) {
+        const chartImage = await generateWeightChartImage(weightVariations);
+        setWeightChartImage(chartImage);
+      }
+    })();
+  }, [weightVariations]);
+
   if (loading) {
     return (
       <div className="min-h-screen flex items-center justify-center">
@@ -230,6 +244,23 @@ export default function PetHealthReport() {
           >
             Imprimir / PDF
           </button>
+          <PDFDownloadLink
+            document={
+              <PetHealthReportPDF
+                pet={pet}
+                owner={owner}
+                events={last6m}
+                vaccTotals={vaccTotals}
+                healthScore={healthScore}
+                weightVariations={weightVariations}
+                weightChartImage={weightChartImage}
+              />
+            }
+            fileName={`reporte-salud-${pet.name}-${new Date().toISOString().split('T')[0]}.pdf`}
+            className="px-3 py-1.5 rounded-lg bg-black text-white hover:bg-gray-800 text-sm"
+          >
+            {({ loading }) => loading ? 'Generando PDF...' : 'Descargar PDF'}
+          </PDFDownloadLink>
         </div>
       </div>
 
