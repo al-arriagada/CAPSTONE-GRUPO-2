@@ -6,6 +6,8 @@ import { supabase } from "../supabaseClient.js";
 import { useAuth } from "../context/AuthContext.jsx";
 import RoutinesPanel from "./RoutinesPanel.jsx";
 import ConfirmDialog from "./ConfirmDialog.jsx";
+import TransferPetModal from "./TransferPetModal.jsx";
+import TransferHistoryPanel from "./TransferHistoryPanel.jsx";
 
 const ALLOWED_EVENT_TYPES = ['heat_cycle', 'medication_dose', 'routine_check', 'vaccine_administered'];
 
@@ -62,6 +64,9 @@ export default function PetDetail() {
   const [uploadingFile, setUploadingFile] = useState(false);
   const [newDocumentTypeId, setNewDocumentTypeId] = useState("");
   const [docTypes, setDocTypes] = useState([]);
+
+  // === Transferencia de mascotas ===
+  const [showTransferModal, setShowTransferModal] = useState(false);
 
   // === Lógica del QR: Nuevos estados y referencia ===
   const [qrType, setQrType] = useState("url"); // 'url' o 'vcard'
@@ -726,6 +731,12 @@ END:VCARD`;
                   Reporte
                 </Link>
                 <button
+                  onClick={() => setShowTransferModal(true)}
+                  className="px-4 py-2 border border-blue-600 text-blue-600 rounded-lg text-sm hover:bg-blue-50"
+                >
+                  Transferir
+                </button>
+                <button
                   onClick={() => setIsEditing(true)}
                   className="px-4 py-2 bg-black text-white rounded-lg text-sm hover:bg-gray-800"
                 >
@@ -856,14 +867,24 @@ END:VCARD`;
                   Perfil
                 </button>
                 <button
-                  onClick={() => setActiveTab("historial")}
-                  className={`min-w-max sm:flex-1 px-6 py-4 text-sm font-medium transition-colors ${activeTab === "historial"
+                  onClick={() => setActiveTab("documentos")}
+                  className={`min-w-max sm:flex-1 px-6 py-4 text-sm font-medium transition-colors ${activeTab === "documentos"
                     ? "border-b-2 border-black text-black"
                     : "text-gray-500 hover:text-gray-700"
                     }`}
                 >
-                  Historial médico
+                  Documentos
                 </button>
+                <button
+                  onClick={() => setActiveTab("transferencias")}
+                  className={`min-w-max sm:flex-1 px-6 py-4 text-sm font-medium transition-colors ${activeTab === "transferencias"
+                    ? "border-b-2 border-black text-black"
+                    : "text-gray-500 hover:text-gray-700"
+                    }`}
+                >
+                  Transferencias
+                </button>
+
                 {canEdit && (<button
                   onClick={() => setActiveTab("rutinas")}
                   className={`min-w-max sm:flex-1 px-6 py-4 text-sm font-medium transition-colors ${activeTab === "rutinas"
@@ -1005,9 +1026,9 @@ END:VCARD`;
                 </div>
               )}
 
-              {activeTab === "historial" && (
+              {activeTab === "documentos" && (
                 <div className="space-y-6">
-                  <h3 className="text-xl font-semibold mb-6">Historial Médico</h3>
+                  <h3 className="text-xl font-semibold mb-6">Documentos médicos</h3>
                   <div className="border p-4 rounded-xl bg-gray-50">
                     <label className="block mb-2 text-gray-700 font-medium">Subir Documento Médico (PDF/Imagen)</label>
                     {!canAddClinical && (
@@ -1074,6 +1095,9 @@ END:VCARD`;
                     )}
                   </div>
                 </div>
+              )}
+              {activeTab === "transferencias" && (
+                <TransferHistoryPanel petId={pet.pet_id} />
               )}
 
               {canEdit && !isDeceased && activeTab === "rutinas" && (
@@ -1404,6 +1428,12 @@ END:VCARD`;
           onConfirm={handleArchive}
           onCancel={() => setShowArchiveModal(false)}
         />
+        {/* Transfer Modal */}
+        <TransferPetModal open={showTransferModal} onClose={(success) => {
+          setShowTransferModal(false); if (success) {  // Redirect to home after successful transfer 
+            setTimeout(() => { navigate("/app"); }, 2000);
+          }
+        }} petId={pet.pet_id} petName={pet.name} />
       </div>
       <EventModal
         open={showEventModal}

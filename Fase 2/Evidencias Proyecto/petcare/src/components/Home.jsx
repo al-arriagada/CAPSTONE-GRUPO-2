@@ -12,6 +12,7 @@ import WalkTrendCard from "./WalkTrendCard_v2.jsx";
 import ActivityIndicatorsCard from "./ActivityIndicatorsCard.jsx";
 import CaregiverPayCard from "./CaregiverPayCard.jsx";
 import CaregiverExpensesLog from "./CaregiverExpensesLog.jsx";
+import PendingTransfers from "./PendingTransfers.jsx";
 
 export default function Home() {
   const { user } = useAuth();
@@ -377,7 +378,7 @@ export default function Home() {
           Gestiona la información y cuidado de tus mascotas
         </p>
       </header>
-
+      <PendingTransfers />
       {/* Estadísticas */}
       <section className="mt-6 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
         <StatCard
@@ -683,11 +684,10 @@ function Tabs({ value, onChange }) {
         <button
           key={it.key}
           onClick={() => onChange(it.key)}
-          className={`rounded-xl border px-3 py-1.5 text-sm ${
-            value === it.key
+          className={`rounded-xl border px-3 py-1.5 text-sm ${value === it.key
               ? "bg-black text-white border-black"
               : "bg-white hover:bg-gray-50"
-          }`}
+            }`}
         >
           {it.label}
         </button>
