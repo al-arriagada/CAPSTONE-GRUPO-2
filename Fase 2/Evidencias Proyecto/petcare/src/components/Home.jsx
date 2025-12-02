@@ -685,8 +685,8 @@ function Tabs({ value, onChange }) {
           key={it.key}
           onClick={() => onChange(it.key)}
           className={`rounded-xl border px-3 py-1.5 text-sm ${value === it.key
-              ? "bg-black text-white border-black"
-              : "bg-white hover:bg-gray-50"
+            ? "bg-black text-white border-black"
+            : "bg-white hover:bg-gray-50"
             }`}
         >
           {it.label}
@@ -798,7 +798,7 @@ function InviteMemberModal({ pets, onClose, onSubmit, loading, serverError }) {
                   ? "Selecciona una mascota..."
                   : "No tienes mascotas registradas"}
               </option>
-              {pets.map((p) => (
+              {pets.filter((p) => p.status_id !== 'deceased').map((p) => (
                 <option key={p.pet_id} value={p.pet_id}>
                   {p.name}
                 </option>

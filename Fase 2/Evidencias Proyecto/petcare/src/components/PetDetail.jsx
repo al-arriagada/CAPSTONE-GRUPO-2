@@ -732,19 +732,23 @@ END:VCARD`;
                 </Link>
                 <button
                   onClick={() => setShowTransferModal(true)}
-                  className="px-4 py-2 border border-blue-600 text-blue-600 rounded-lg text-sm hover:bg-blue-50"
+                  disabled={isDeceased}
+                  className={`px-4 py-2 border border-blue-600 text-blue-600 rounded-lg text-sm hover:bg-blue-50 ${isDeceased ? 'opacity-50 cursor-not-allowed' : ''}`}
+
+                  title={isDeceased ? "No se puede transferir una mascota fallecida" : "Transferir"}
                 >
                   Transferir
                 </button>
                 <button
                   onClick={() => setIsEditing(true)}
-                  className="px-4 py-2 bg-black text-white rounded-lg text-sm hover:bg-gray-800"
+                  disabled={isDeceased}
+                  className={`px-4 py-2 bg-black text-white rounded-lg text-sm hover:bg-gray-800 ${isDeceased ? 'opacity-50 cursor-not-allowed' : ''}`}
+                  title={isDeceased ? "No se puede editar una mascota fallecida" : "Editar Perfil"}
                 >
                   Editar Perfil
                 </button>
                 <button
                   onClick={() => setShowArchiveModal(true)}
-                  disabled={deleting}
                   className="px-4 py-2 bg-red-600 text-white rounded-lg text-sm hover:bg-red-700 disabled:opacity-50"
                 >
                   {deleting ? "Eliminando..." : "Eliminar"}
@@ -1128,7 +1132,6 @@ END:VCARD`;
                     <h3 className="text-xl font-semibold">Colaboradores en {pet.name}</h3>
                   </div>
                   <p className="text-gray-600">
-                    Invita a profesionales por correo. Los veterinarios podrán agregar documentos y eventos si la política lo permite.
                   </p>
                   {(memberErr || memberMsg) && (
                     <div className={`p-3 rounded-xl border ${memberErr ? 'bg-red-50 border-red-200 text-red-700' : 'bg-green-50 border-green-200 text-green-700'}`}>
@@ -1442,7 +1445,7 @@ END:VCARD`;
         onClose={() => setShowEventModal(false)}
         petId={pet.pet_id}
         eventTypes={eventTypes}
-        canAdd={canAddClinical}
+        canAdd={canAddClinical && !isDeceased}
         onEventAdded={async () => {
           const refreshed = await loadEventsByDate(pet.pet_id, selectedDate);
           setDayEvents(refreshed);

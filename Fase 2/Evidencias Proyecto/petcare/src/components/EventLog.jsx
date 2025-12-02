@@ -69,6 +69,7 @@ export default function EventLog({ petId: propPetId }) {
   const [showForm, setShowForm] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
+  const [isDeceased, setIsDeceased] = useState(false);
   const [editingId, setEditingId] = useState(null);
 
   const [fieldErrors, setFieldErrors] = useState({
@@ -258,9 +259,14 @@ export default function EventLog({ petId: propPetId }) {
         const { data: petData } = await supabase
           .schema("petcare")
           .from("pet")
-          .select("species_id")
+          .select("species_id, status_id")
           .eq("pet_id", petId)
           .maybeSingle();
+
+        // Check if pet is deceased
+        if (petData) {
+          setIsDeceased(petData.status_id === 'deceased');
+        }
 
         if (petData?.species_id) {
           const { data: vacs } = await supabase
@@ -1295,6 +1301,7 @@ export default function EventLog({ petId: propPetId }) {
 
         <button
           onClick={() => {
+            if (isDeceased) return;
             if (showForm) {
               setShowForm(false);
               resetForm();
@@ -1303,7 +1310,9 @@ export default function EventLog({ petId: propPetId }) {
               resetForm();
             }
           }}
-          className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
+          disabled={isDeceased}
+          className={`px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 ${isDeceased ? 'opacity-50 cursor-not-allowed' : ''}`}
+          title={isDeceased ? "No se pueden agregar eventos a una mascota fallecida" : ""}
         >
           {showForm ? "Cancelar" : "+ Agregar Evento"}
         </button>
