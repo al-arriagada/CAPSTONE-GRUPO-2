@@ -680,8 +680,7 @@ function Tabs({ value, onChange }) {
     { key: "compartidas", label: "Mascotas Compartidas" },
     { key: "citas", label: "Citas" },
     { key: "historial", label: "Historial Médico" },
-    { key: "analisis", label: "Análisis" },
-    { key: "gastos", label: "Gastos" },
+    { key: "analisis", label: "Seguimiento" }
   ];
   return (
     <div className="flex flex-wrap gap-2">
